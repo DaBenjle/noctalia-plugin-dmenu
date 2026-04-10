@@ -301,7 +301,7 @@ test_9() {
 
 test_10() {
     header 10 "toggle — open/close"
-    instruct "The launcher should open. Press Escape to close it."
+    instruct "The panel should open. Press Escape to close it."
     "$QS" ipc call plugin:dmenu toggle
     sleep 2
     echo "  $(green "✓") toggle executed (visual check)"
@@ -310,7 +310,7 @@ test_10() {
 
 test_11() {
     header 11 "close — programmatic cancel"
-    instruct "The launcher will open then close after 2 seconds automatically"
+    instruct "The panel will open then close after 2 seconds automatically"
     cleanup
     "$QS" ipc call plugin:dmenu showSimple "waiting|for|close" "|" "" ""
     sleep 2
@@ -384,24 +384,6 @@ test_14() {
     cleanup
 }
 
-test_15() {
-    header 15 "Backspace past >dmenu (session cancel)"
-    instruct "The launcher will open. Hold backspace until >dmenu disappears."
-    instruct "The session should cancel and you'll be in the normal launcher."
-    instruct "Press Escape when done."
-    cleanup
-    "$QS" ipc call plugin:dmenu showSimple "alpha|beta|gamma" "|" "" ""
-    sleep 5
-    if [[ ! -f "$RESULT_FILE" ]]; then
-        echo "  $(green "✓") No result written — session was properly cancelled"
-        PASS=$((PASS + 1))
-    else
-        echo "  $(yellow "⊘") Result was written (user may have selected an item)"
-        SKIP=$((SKIP + 1))
-    fi
-    cleanup
-}
-
 # ── Runner ──
 
 run_all() {
@@ -410,7 +392,7 @@ run_all() {
     echo "$(bold "║     noctalia-dmenu test suite                    ║")"
     echo "$(bold "╚══════════════════════════════════════════════════╝")"
     echo ""
-    echo "  Each test opens the launcher. Follow the instructions."
+    echo "  Each test opens the dmenu panel. Follow the instructions."
     echo "  Press Escape to skip a test."
     echo ""
     read -rp "  Press Enter to start... " _
@@ -428,8 +410,7 @@ run_all() {
     test_11; prompt_continue
     test_12; prompt_continue
     test_13; prompt_continue
-    test_14; prompt_continue
-    test_15
+    test_14
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

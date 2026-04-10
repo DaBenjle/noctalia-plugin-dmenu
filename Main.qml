@@ -30,7 +30,7 @@ Item {
     signal sessionEnded(int sid)
 
     // ── Deferred launcher open ──
-    // When openLauncher is called shortly after a closeLauncher (chaining),
+    // When openPanel is called shortly after a closePanel (chaining),
     // we defer it to let the close animation finish.
     property real lastCloseTimestamp: 0
     readonly property int chainDelay: 350  // ms to wait after close before reopen
@@ -42,7 +42,7 @@ Item {
         onTriggered: {
             if (pluginApi && state.active) {
                 pluginApi.withCurrentScreen(function(screen) {
-                    pluginApi.openLauncher(screen);
+                    pluginApi.openPanel(screen);
                 });
             }
         }
@@ -50,7 +50,7 @@ Item {
 
     // Smart open: if we recently closed the launcher, defer the open.
     // Otherwise open immediately.
-    function openLauncherSmart() {
+    function openPanelSmart() {
         if (!pluginApi) return;
         var now = Date.now();
         var elapsed = now - lastCloseTimestamp;
@@ -63,17 +63,23 @@ Item {
         } else {
             // No recent close — open immediately
             pluginApi.withCurrentScreen(function(screen) {
-                pluginApi.openLauncher(screen);
+                pluginApi.openPanel(screen);
             });
         }
     }
+
+    // Set to true during beginSession when replacing an old session.
+    // The Panel checks this to avoid closing during rapid replacement.
+    property bool replacingSession: false
 
     // ── Session management ──
     function beginSession(config) {
         if (state.active) {
             var oldSid = state.sessionId;
+            replacingSession = true;
             state.active = false;
             sessionEnded(oldSid);
+            replacingSession = false;
         }
 
         state.sessionId++;
@@ -259,7 +265,7 @@ Item {
         if (shouldClose && pluginApi) {
             lastCloseTimestamp = Date.now();
             pluginApi.withCurrentScreen(function(screen) {
-                pluginApi.closeLauncher(screen);
+                pluginApi.closePanel(screen);
             });
         }
 
@@ -273,7 +279,7 @@ Item {
 
         // Step 5: Fire callback immediately
         // The callback itself may call show/showSimple, which will use
-        // openLauncherSmart() to defer the open if needed.
+        // openPanelSmart() to defer the open if needed.
         if (actualCallback && actualCallback !== "") {
             var cmd = actualCallback.replace(/\{\}/g, resultStr);
             cmd = cmd.replace(/\{value\}/g, resultStr);
@@ -311,7 +317,7 @@ Item {
         config.items = root.parseItems(config.items || [], null);
         var merged = root.buildConfig(config);
         root.beginSession(merged);
-        root.openLauncherSmart();
+        root.openPanelSmart();
 
         Logger.i("DmenuProvider", "Session " + root.state.sessionId
             + " started with " + merged.items.length + " items");
@@ -340,7 +346,7 @@ Item {
                 callbackCmd: callbackCmd || ""
             });
             root.beginSession(merged);
-            root.openLauncherSmart();
+            root.openPanelSmart();
 
             Logger.i("DmenuProvider", "Session " + root.state.sessionId
                 + " (simple) started with " + parsed.length + " items");
@@ -360,7 +366,7 @@ Item {
         function toggle() {
             if (!pluginApi) return;
             pluginApi.withCurrentScreen(function(screen) {
-                pluginApi.toggleLauncher(screen);
+                pluginApi.togglePanel(screen);
             });
         }
 
@@ -368,7 +374,7 @@ Item {
             if (!pluginApi) return;
             root.endSession();
             pluginApi.withCurrentScreen(function(screen) {
-                pluginApi.closeLauncher(screen);
+                pluginApi.closePanel(screen);
             });
         }
 
@@ -396,7 +402,7 @@ Item {
                 callbackCmd: fileLoader.callbackCmd
             });
             root.beginSession(merged);
-            root.openLauncherSmart();
+            root.openPanelSmart();
 
             Logger.i("DmenuProvider", "Session " + root.state.sessionId
                 + " (file) started with " + parsed.length + " items");
