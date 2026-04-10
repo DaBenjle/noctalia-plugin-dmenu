@@ -10,7 +10,6 @@ Item {
     property var pluginApi: null
 
     // ── Inline state object ──
-    // LauncherProvider accesses this via pluginApi.mainInstance.state
     property QtObject state: QtObject {
         property int sessionId: 0
         property var items: []
@@ -29,6 +28,45 @@ Item {
     signal itemsChanged()
     signal sessionStarted(int sid)
     signal sessionEnded(int sid)
+
+    // ── Deferred launcher open ──
+    // When openLauncher is called shortly after a closeLauncher (chaining),
+    // we defer it to let the close animation finish.
+    property real lastCloseTimestamp: 0
+    readonly property int chainDelay: 350  // ms to wait after close before reopen
+
+    Timer {
+        id: launcherOpenTimer
+        interval: root.chainDelay
+        repeat: false
+        onTriggered: {
+            if (pluginApi && state.active) {
+                pluginApi.withCurrentScreen(function(screen) {
+                    pluginApi.openLauncher(screen);
+                });
+            }
+        }
+    }
+
+    // Smart open: if we recently closed the launcher, defer the open.
+    // Otherwise open immediately.
+    function openLauncherSmart() {
+        if (!pluginApi) return;
+        var now = Date.now();
+        var elapsed = now - lastCloseTimestamp;
+
+        if (elapsed < chainDelay) {
+            // We just closed — defer to let animation finish
+            launcherOpenTimer.interval = chainDelay - elapsed + 50;
+            launcherOpenTimer.restart();
+            Logger.d("DmenuProvider", "Deferring launcher open by " + launcherOpenTimer.interval + "ms");
+        } else {
+            // No recent close — open immediately
+            pluginApi.withCurrentScreen(function(screen) {
+                pluginApi.openLauncher(screen);
+            });
+        }
+    }
 
     // ── Session management ──
     function beginSession(config) {
@@ -137,6 +175,11 @@ Item {
                 // Not JSON — treat as separated string
             }
             var sep = separator || "\n";
+            // Unescape common separator literals passed as strings from IPC
+            // (IPC sends "\n" as two chars: backslash + n)
+            sep = sep.replace(/\\n/g, "\n")
+                     .replace(/\\t/g, "\t")
+                     .replace(/\\r/g, "\r");
             var lines = input.split(sep).filter(function(l) { return l.length > 0; });
             return lines.map(function(line, idx) {
                 return { name: line.trim(), value: line.trim(), index: idx };
@@ -166,7 +209,6 @@ Item {
     }
 
     // ── Selection handler ──
-    // Sequence: capture → write file → close launcher → end session → callback
     function handleSelection(value, index, altKey) {
         if (!state.active) return;
 
@@ -213,8 +255,9 @@ Item {
             "printf '%s' '" + escaped + "' > '" + escapedFile + ".tmp' && mv '" + escapedFile + ".tmp' '" + escapedFile + "'"
         ]);
 
-        // Step 2: Close launcher
+        // Step 2: Close launcher and record timestamp
         if (shouldClose && pluginApi) {
+            lastCloseTimestamp = Date.now();
             pluginApi.withCurrentScreen(function(screen) {
                 pluginApi.closeLauncher(screen);
             });
@@ -228,7 +271,9 @@ Item {
             ToastService.showNotice("Selected: " + value);
         }
 
-        // Step 5: Fire callback (may chain another show())
+        // Step 5: Fire callback immediately
+        // The callback itself may call show/showSimple, which will use
+        // openLauncherSmart() to defer the open if needed.
         if (actualCallback && actualCallback !== "") {
             var cmd = actualCallback.replace(/\{\}/g, resultStr);
             cmd = cmd.replace(/\{value\}/g, resultStr);
@@ -266,10 +311,7 @@ Item {
         config.items = root.parseItems(config.items || [], null);
         var merged = root.buildConfig(config);
         root.beginSession(merged);
-
-        pluginApi.withCurrentScreen(function(screen) {
-            pluginApi.openLauncher(screen);
-        });
+        root.openLauncherSmart();
 
         Logger.i("DmenuProvider", "Session " + root.state.sessionId
             + " started with " + merged.items.length + " items");
@@ -279,18 +321,12 @@ Item {
     IpcHandler {
         target: "plugin:dmenu"
 
-        // show takes a single JSON config string.
-        // NOTE: If Quickshell CLI rejects single-arg calls, use showJson instead
-        // which takes a dummy second arg, or use showSimple for plain lists.
         function show(configJson: string) {
-            _doShow(configJson);
+            root._doShow(configJson);
         }
 
-        // Workaround for Quickshell CLI single-arg parsing bug.
-        // Second arg is ignored — pass any value (e.g., "x").
-        // Usage: noctalia-shell ipc call plugin:dmenu showJson '{"items":[...]}' x
         function showJson(configJson: string, unused: string) {
-            _doShow(configJson);
+            root._doShow(configJson);
         }
 
         function showSimple(items: string, separator: string, prompt: string, callbackCmd: string) {
@@ -304,10 +340,7 @@ Item {
                 callbackCmd: callbackCmd || ""
             });
             root.beginSession(merged);
-
-            pluginApi.withCurrentScreen(function(screen) {
-                pluginApi.openLauncher(screen);
-            });
+            root.openLauncherSmart();
 
             Logger.i("DmenuProvider", "Session " + root.state.sessionId
                 + " (simple) started with " + parsed.length + " items");
@@ -318,6 +351,9 @@ Item {
             fileLoader.separator = (separator && separator !== "") ? separator : "\n";
             fileLoader.prompt = prompt || "";
             fileLoader.callbackCmd = callbackCmd || "";
+            // Reset path first to force FileView to re-fire onLoaded
+            // even if the same file is requested again
+            fileLoader.path = "";
             fileLoader.path = filePath;
         }
 
@@ -360,12 +396,7 @@ Item {
                 callbackCmd: fileLoader.callbackCmd
             });
             root.beginSession(merged);
-
-            if (pluginApi) {
-                pluginApi.withCurrentScreen(function(screen) {
-                    pluginApi.openLauncher(screen);
-                });
-            }
+            root.openLauncherSmart();
 
             Logger.i("DmenuProvider", "Session " + root.state.sessionId
                 + " (file) started with " + parsed.length + " items");

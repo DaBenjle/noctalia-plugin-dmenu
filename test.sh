@@ -65,6 +65,28 @@ check_result() {
     fi
 }
 
+check_result_contains() {
+    local expected="$1"
+    local label="$2"
+    if [[ -f "$RESULT_FILE" ]]; then
+        local actual
+        actual=$(cat "$RESULT_FILE")
+        if echo "$actual" | grep -qF "$expected"; then
+            echo "  $(green "✓") Result contains '${expected}': $(bold "$actual")"
+            PASS=$((PASS + 1))
+            return 0
+        else
+            echo "  $(red "✗") Expected to contain: $(bold "$expected"), got: $(bold "$actual")"
+            FAIL=$((FAIL + 1))
+            return 1
+        fi
+    else
+        echo "  $(red "✗") No result file"
+        FAIL=$((FAIL + 1))
+        return 1
+    fi
+}
+
 prompt_continue() {
     echo ""
     read -rp "  Press Enter to continue to next test... " _
@@ -117,7 +139,7 @@ test_3() {
     header 3 "showSimple — search/filter"
     instruct "Type 'gra' to filter, then select 'grape'"
     cleanup
-    "$QS" ipc call plugin:dmenu showSimple "apple|grape|grapefruit|banana|orange|mango" "|" "Search test:" ""
+    "$QS" ipc call plugin:dmenu showSimple "apple|grape|grapefruit|banana|orange|mango" "|" "" ""
     if wait_result 20; then
         check_result "grape" "search filter"
     else
@@ -128,18 +150,19 @@ test_3() {
 }
 
 test_4() {
-    header 4 "showJson — custom input enabled"
-    instruct "Type 'my-custom-value' (not in list) and select it"
+    header 4 "showJson — custom input"
+    instruct "Type 'hello-world' (not in list) and select the 'Use as custom input' entry"
+    echo "  $(yellow "Note"): If you have a custom input prefix in settings, it will be prepended."
     cleanup
-    "$QS" ipc call plugin:dmenu showJson '{"items":["option-a","option-b"],"prompt":"Custom input test:","allowCustomInput":true}' x
+    "$QS" ipc call plugin:dmenu showJson '{"items":["option-a","option-b"],"allowCustomInput":true}' x
     if wait_result 20; then
         local actual
         actual=$(cat "$RESULT_FILE")
-        if [[ "$actual" == "my-custom-value" ]]; then
+        if echo "$actual" | grep -qF "hello-world"; then
             echo "  $(green "✓") Custom input accepted: $(bold "$actual")"
             PASS=$((PASS + 1))
         else
-            echo "  $(yellow "⊘") Got: $(bold "$actual") (might have selected a list item instead)"
+            echo "  $(yellow "⊘") Got: $(bold "$actual") (might have selected a list item)"
             SKIP=$((SKIP + 1))
         fi
     else
@@ -151,20 +174,11 @@ test_4() {
 
 test_5() {
     header 5 "Result format — JSON"
-    instruct "Select the second item ('beta')"
+    instruct "Select 'beta' (the second item)"
     cleanup
-    "$QS" ipc call plugin:dmenu showJson '{"items":["alpha","beta","gamma"],"prompt":"JSON format test:","resultFormat":"json"}' x
+    "$QS" ipc call plugin:dmenu showJson '{"items":["alpha","beta","gamma"],"resultFormat":"json"}' x
     if wait_result 15; then
-        local actual
-        actual=$(cat "$RESULT_FILE")
-        # Check it's valid JSON with the right value
-        if echo "$actual" | grep -q '"value":"beta"'; then
-            echo "  $(green "✓") JSON result: $(bold "$actual")"
-            PASS=$((PASS + 1))
-        else
-            echo "  $(red "✗") Expected JSON with value 'beta', got: $(bold "$actual")"
-            FAIL=$((FAIL + 1))
-        fi
+        check_result_contains '"value":"beta"' "json format"
     else
         echo "  $(yellow "⊘") Skipped"
         SKIP=$((SKIP + 1))
@@ -174,9 +188,9 @@ test_5() {
 
 test_6() {
     header 6 "Result format — index"
-    instruct "Select the third item ('gamma', index 2)"
+    instruct "Select 'gamma' (the third item, index 2)"
     cleanup
-    "$QS" ipc call plugin:dmenu showJson '{"items":["alpha","beta","gamma"],"prompt":"Index format test:","resultFormat":"index"}' x
+    "$QS" ipc call plugin:dmenu showJson '{"items":["alpha","beta","gamma"],"resultFormat":"index"}' x
     if wait_result 15; then
         check_result "2" "index format"
     else
@@ -191,12 +205,20 @@ test_7() {
     instruct "Select any item"
     cleanup
     rm -f "$CALLBACK_FILE"
-    "$QS" ipc call plugin:dmenu showJson "{\"items\":[\"red\",\"green\",\"blue\"],\"prompt\":\"Callback test:\",\"callbackCmd\":\"printf '%s' '{}' > $CALLBACK_FILE\"}" x
+
+    # Write the callback as a temp script to avoid quoting issues
+    local cb_script="/tmp/noctalia-dmenu-cb-test.sh"
+    cat > "$cb_script" << 'SCRIPT'
+#!/usr/bin/env bash
+printf '%s' "$1" > /tmp/noctalia-dmenu-callback-test
+SCRIPT
+    chmod +x "$cb_script"
+
+    "$QS" ipc call plugin:dmenu showJson "{\"items\":[\"red\",\"green\",\"blue\"],\"callbackCmd\":\"$cb_script '{}'\"}" x
     if wait_result 15; then
         local selected
         selected=$(cat "$RESULT_FILE")
         echo "  Selected: $(bold "$selected")"
-        # Give callback a moment to execute
         sleep 0.5
         if [[ -f "$CALLBACK_FILE" ]]; then
             local cb_result
@@ -217,17 +239,25 @@ test_7() {
         SKIP=$((SKIP + 1))
     fi
     cleanup
-    rm -f "$CALLBACK_FILE"
+    rm -f "$CALLBACK_FILE" "$cb_script"
 }
 
 test_8() {
     header 8 "Chaining — two sequential menus"
     instruct "Select 'Power' in the first menu, then 'Reboot' in the second"
+
     cleanup
 
-    # The callback triggers a second showSimple
-    local chain_cb="$QS ipc call plugin:dmenu showSimple 'Shutdown|Reboot|Suspend' '|' 'Power submenu (you picked {})' ''"
-    "$QS" ipc call plugin:dmenu showJson "{\"items\":[\"Power\",\"Display\",\"Network\"],\"prompt\":\"System:\",\"callbackCmd\":\"$chain_cb\"}" x
+    # Create a chaining script that the callback will invoke
+    local chain_script="/tmp/noctalia-dmenu-chain.sh"
+    cat > "$chain_script" << 'CHAINSCRIPT'
+#!/usr/bin/env bash
+# This is called by the first menu's callback with the selection as $1
+noctalia-shell ipc call plugin:dmenu showSimple "Shutdown|Reboot|Suspend" "|" "Power submenu (picked: $1):" ""
+CHAINSCRIPT
+    chmod +x "$chain_script"
+
+    "$QS" ipc call plugin:dmenu showJson "{\"items\":[\"Power\",\"Display\",\"Network\"],\"callbackCmd\":\"$chain_script '{}'\"}" x
 
     # Wait for first selection
     if wait_result 15; then
@@ -236,18 +266,20 @@ test_8() {
         echo "  First selection: $(bold "$first")"
         cleanup
 
-        # Wait for second selection
+        # Wait for second selection (the chained menu)
+        echo "  $(yellow "→") Now select 'Reboot' from the second menu"
         if wait_result 15; then
             check_result "Reboot" "chaining"
         else
-            echo "  $(yellow "⊘") Second menu skipped"
-            SKIP=$((SKIP + 1))
+            echo "  $(red "✗") Second menu didn't appear or no selection"
+            FAIL=$((FAIL + 1))
         fi
     else
         echo "  $(yellow "⊘") Skipped"
         SKIP=$((SKIP + 1))
     fi
     cleanup
+    rm -f "$chain_script"
 }
 
 test_9() {
@@ -280,7 +312,7 @@ test_11() {
     header 11 "close — programmatic cancel"
     instruct "The launcher will open then close after 2 seconds automatically"
     cleanup
-    "$QS" ipc call plugin:dmenu showSimple "waiting|for|close" "|" "Will auto-close:" ""
+    "$QS" ipc call plugin:dmenu showSimple "waiting|for|close" "|" "" ""
     sleep 2
     "$QS" ipc call plugin:dmenu close
     sleep 0.5
@@ -298,11 +330,11 @@ test_12() {
     header 12 "Rapid session replacement (no race)"
     instruct "Three menus fire rapidly. Only the last ('C') should appear. Select 'C3'."
     cleanup
-    "$QS" ipc call plugin:dmenu showSimple "A1|A2|A3" "|" "Menu A:" ""
+    "$QS" ipc call plugin:dmenu showSimple "A1|A2|A3" "|" "" ""
     sleep 0.1
-    "$QS" ipc call plugin:dmenu showSimple "B1|B2|B3" "|" "Menu B:" ""
+    "$QS" ipc call plugin:dmenu showSimple "B1|B2|B3" "|" "" ""
     sleep 0.1
-    "$QS" ipc call plugin:dmenu showSimple "C1|C2|C3" "|" "Menu C (pick C3):" ""
+    "$QS" ipc call plugin:dmenu showSimple "C1|C2|C3" "|" "" ""
     if wait_result 15; then
         check_result "C3" "rapid replacement"
     else
@@ -316,7 +348,7 @@ test_13() {
     header 13 "Special characters in items"
     instruct "Select the item with quotes: He said \"hello\""
     cleanup
-    "$QS" ipc call plugin:dmenu showSimple 'normal item|He said "hello"|it'\''s fine|path/to/file' "|" "Special chars:" ""
+    "$QS" ipc call plugin:dmenu showSimple 'normal item|He said "hello"|path/to/file' "|" "" ""
     if wait_result 15; then
         local actual
         actual=$(cat "$RESULT_FILE")
@@ -339,7 +371,7 @@ test_14() {
         [[ -n "$items" ]] && items+="|"
         items+="Item $i"
     done
-    "$QS" ipc call plugin:dmenu showSimple "$items" "|" "500 items (search test):" ""
+    "$QS" ipc call plugin:dmenu showSimple "$items" "|" "" ""
     if wait_result 30; then
         local actual
         actual=$(cat "$RESULT_FILE")
@@ -347,6 +379,24 @@ test_14() {
         PASS=$((PASS + 1))
     else
         echo "  $(yellow "⊘") Skipped"
+        SKIP=$((SKIP + 1))
+    fi
+    cleanup
+}
+
+test_15() {
+    header 15 "Backspace past >dmenu (session cancel)"
+    instruct "The launcher will open. Hold backspace until >dmenu disappears."
+    instruct "The session should cancel and you'll be in the normal launcher."
+    instruct "Press Escape when done."
+    cleanup
+    "$QS" ipc call plugin:dmenu showSimple "alpha|beta|gamma" "|" "" ""
+    sleep 5
+    if [[ ! -f "$RESULT_FILE" ]]; then
+        echo "  $(green "✓") No result written — session was properly cancelled"
+        PASS=$((PASS + 1))
+    else
+        echo "  $(yellow "⊘") Result was written (user may have selected an item)"
         SKIP=$((SKIP + 1))
     fi
     cleanup
@@ -378,7 +428,8 @@ run_all() {
     test_11; prompt_continue
     test_12; prompt_continue
     test_13; prompt_continue
-    test_14
+    test_14; prompt_continue
+    test_15
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

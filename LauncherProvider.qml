@@ -16,21 +16,38 @@ Item {
     property bool supportsAutoPaste: false
     property bool ignoreDensity: true
 
-    // ── Convenience accessor ──
+    // ── Convenience accessors ──
     readonly property var main: pluginApi?.mainInstance ?? null
     readonly property var dmenuState: main?.state ?? null
+
+    // Track if we had an active session so we can detect when the user
+    // backspaces past ">dmenu" and cancel gracefully.
+    property bool hadActiveSession: false
 
     function init() {
         Logger.i("DmenuProvider", "LauncherProvider initialized");
     }
 
     function onOpened() {
-        // Nothing to reset — state is managed by Main.qml
+        // Reset tracking
     }
 
     // ── Command handling ──
     function handleCommand(searchText) {
-        return searchText.startsWith(">dmenu");
+        // We handle the >dmenu prefix
+        if (searchText.startsWith(">dmenu")) {
+            return true;
+        }
+
+        // If we had an active session but the user backspaced past ">dmenu",
+        // cancel the session. This prevents the user from accidentally
+        // falling into the normal launcher while a dmenu session is active.
+        if (hadActiveSession && root.main && root.main.state.active) {
+            root.main.endSession();
+            hadActiveSession = false;
+        }
+
+        return false;
     }
 
     function commands() {
@@ -55,6 +72,7 @@ Item {
 
         // If no active session, show a hint
         if (!st || !st.active) {
+            hadActiveSession = false;
             return [{
                 "name": "No active dmenu session",
                 "description": "Use IPC or noctalia-dmenu script to send items",
@@ -63,6 +81,8 @@ Item {
                 "onActivate": function() {}
             }];
         }
+
+        hadActiveSession = true;
 
         var query = searchText.slice(6).trim().toLowerCase();
         var items = st.items;
@@ -82,7 +102,21 @@ Item {
             }
         }
 
-        // Custom input option
+        // If there's a prompt and no search query, show it on the first result.
+        // This gives a visual hint without adding a non-interactive entry.
+        if (st.prompt && st.prompt !== "" && query === "" && results.length > 0) {
+            var first = results[0];
+            if (!first.description || first.description === "") {
+                // No existing description — use prompt as the subtitle
+                first.description = st.prompt;
+                first.singleLine = false;
+            } else {
+                // Item has its own description — prepend prompt with a separator
+                first.description = st.prompt + " · " + first.description;
+            }
+        }
+
+        // Custom input option — only if query doesn't exactly match any item
         if (st.allowCustomInput && query !== "") {
             var exactMatch = results.some(function(r) {
                 return r.name.toLowerCase() === query;
@@ -104,18 +138,6 @@ Item {
                     }
                 });
             }
-        }
-
-        // Prompt header
-        if (st.prompt && st.prompt !== "" && results.length > 0) {
-            results.unshift({
-                "name": st.prompt,
-                "description": "",
-                "icon": "chevron-right",
-                "isTablerIcon": true,
-                "singleLine": true,
-                "onActivate": function() {}
-            });
         }
 
         return results;
