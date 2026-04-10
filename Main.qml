@@ -48,35 +48,36 @@ Item {
         }
     }
 
-    // Set by beginSession when it replaced an active session — tells
-    // openPanelSmart to skip the openPanel call since the panel is still visible.
-    property bool panelAlreadyOpen: false
-
-    // Smart open: skip if panel is already showing (rapid replacement),
-    // defer if we recently closed (chaining), otherwise open immediately.
+    // Smart open: if the panel is already showing (rapid replacement), just
+    // let onItemsChanged refresh it. If we recently closed (chaining), defer.
+    // Otherwise open immediately.
     function openPanelSmart() {
         if (!pluginApi) return;
-
-        // If we just replaced a session (panel is still open), don't reopen.
-        // The Panel refreshes items via onItemsChanged.
-        if (panelAlreadyOpen) {
-            panelAlreadyOpen = false;
-            Logger.d("DmenuProvider", "Panel already open, skipping openPanel");
-            return;
-        }
 
         var now = Date.now();
         var elapsed = now - lastCloseTimestamp;
 
+        // If we recently called closePanel (chaining), the panel is in its
+        // close animation and panelOpenScreen hasn't cleared yet.
+        // Defer the open to let the animation finish.
         if (elapsed < chainDelay) {
             launcherOpenTimer.interval = chainDelay - elapsed + 50;
             launcherOpenTimer.restart();
             Logger.d("DmenuProvider", "Deferring panel open by " + launcherOpenTimer.interval + "ms");
-        } else {
-            pluginApi.withCurrentScreen(function(screen) {
-                pluginApi.openPanel(screen);
-            });
+            return;
         }
+
+        // No recent close — if the panel is still open (rapid replacement),
+        // just let onItemsChanged refresh it in place.
+        if (pluginApi.panelOpenScreen) {
+            Logger.d("DmenuProvider", "Panel already open, refreshing in place");
+            return;
+        }
+
+        // Panel is closed and no recent close — open immediately
+        pluginApi.withCurrentScreen(function(screen) {
+            pluginApi.openPanel(screen);
+        });
     }
 
     // Set to true during beginSession when replacing an old session.
@@ -87,13 +88,10 @@ Item {
     function beginSession(config) {
         if (state.active) {
             var oldSid = state.sessionId;
-            panelAlreadyOpen = true;  // panel is still showing
             replacingSession = true;
             state.active = false;
             sessionEnded(oldSid);
             replacingSession = false;
-        } else {
-            panelAlreadyOpen = false;
         }
 
         state.sessionId++;
@@ -126,6 +124,7 @@ Item {
         state.prompt = "";
         state.callbackCmd = "";
         state.altActions = {};
+        launcherOpenTimer.stop();
         sessionEnded(oldSid);
     }
 
@@ -152,10 +151,9 @@ Item {
             || defaults.resultFile
             || manifest.resultFile
             || "/tmp/noctalia-dmenu-result";
-        cfg.resultFormat = overrides.resultFormat
-            || defaults.resultFormat
-            || manifest.resultFormat
-            || "plain";
+        // resultFormat is per-invocation only, never read from saved settings.
+        // This ensures scripts behave consistently across systems.
+        cfg.resultFormat = overrides.resultFormat || "plain";
         cfg.allowCustomInput = overrides.allowCustomInput !== undefined
             ? overrides.allowCustomInput
             : (defaults.allowCustomInput !== undefined

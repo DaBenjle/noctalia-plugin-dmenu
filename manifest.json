@@ -1,7 +1,7 @@
 {
   "id": "dmenu",
   "name": "Dmenu Provider",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "minNoctaliaVersion": "3.9.0",
   "author": "github.com/DaBenjle",
   "license": "MIT",
@@ -22,10 +22,12 @@
       "defaultSeparator": "\n",
       "allowCustomInput": false,
       "showToastOnSelect": false,
-      "resultFormat": "plain",
       "closeOnSelect": true,
       "customInputPrefix": "",
-      "maxResults": 200
+      "maxResults": 200,
+      "panelPosition": "follow_launcher",
+      "showMatchCount": true,
+      "showFooter": true
     }
   }
 }

@@ -34,11 +34,6 @@ ColumnLayout {
         ?? pluginApi?.manifest?.metadata?.defaultSettings?.closeOnSelect
         ?? true
 
-    property string editResultFormat:
-        pluginApi?.pluginSettings?.resultFormat
-        || pluginApi?.manifest?.metadata?.defaultSettings?.resultFormat
-        || "plain"
-
     property string editCustomInputPrefix:
         pluginApi?.pluginSettings?.customInputPrefix
         || pluginApi?.manifest?.metadata?.defaultSettings?.customInputPrefix
@@ -49,38 +44,55 @@ ColumnLayout {
         || pluginApi?.manifest?.metadata?.defaultSettings?.maxResults
         || 200
 
+    // ── Position settings ──
+    property string editPanelPosition:
+        pluginApi?.pluginSettings?.panelPosition
+        || pluginApi?.manifest?.metadata?.defaultSettings?.panelPosition
+        || "follow_launcher"
+
+    property bool editShowMatchCount:
+        pluginApi?.pluginSettings?.showMatchCount
+        ?? pluginApi?.manifest?.metadata?.defaultSettings?.showMatchCount
+        ?? true
+
+    property bool editShowFooter:
+        pluginApi?.pluginSettings?.showFooter
+        ?? pluginApi?.manifest?.metadata?.defaultSettings?.showFooter
+        ?? true
+
     spacing: Style.marginM
 
-    // ── Output section ──
-    NTextInput {
-        Layout.fillWidth: true
-        label: "Result file path"
-        description: "Where selections are written. Scripts read this file after the menu closes."
-        placeholderText: "/tmp/noctalia-dmenu-result"
-        text: root.editResultFile
-        onTextChanged: root.editResultFile = text
+    // ═══════════════════════════════════════
+    // Panel appearance
+    // ═══════════════════════════════════════
+
+    NLabel {
+        label: "Panel appearance"
     }
 
-    ColumnLayout {
+    NTextInput {
         Layout.fillWidth: true
-        spacing: Style.marginS
+        label: "Panel position"
+        description: "follow_launcher, center, top_center, bottom_center, top_left, top_right, bottom_left, bottom_right, center_left, center_right"
+        placeholderText: "follow_launcher"
+        text: root.editPanelPosition
+        onTextChanged: root.editPanelPosition = text
+    }
 
-        NLabel {
-            label: "Result format"
-            description: "How the selection is written: plain (raw value), json (structured), or index (item number)"
-        }
+    NToggle {
+        Layout.fillWidth: true
+        label: "Show match count"
+        description: "Display the number of matching items while filtering"
+        checked: root.editShowMatchCount
+        onToggled: function(v) { root.editShowMatchCount = v }
+    }
 
-        NTextInput {
-            Layout.fillWidth: true
-            placeholderText: "plain"
-            text: root.editResultFormat
-            onTextChanged: {
-                var v = text.trim().toLowerCase();
-                if (v === "plain" || v === "json" || v === "index") {
-                    root.editResultFormat = v;
-                }
-            }
-        }
+    NToggle {
+        Layout.fillWidth: true
+        label: "Show footer"
+        description: "Display the result count footer below the list"
+        checked: root.editShowFooter
+        onToggled: function(v) { root.editShowFooter = v }
     }
 
     NDivider {
@@ -89,14 +101,20 @@ ColumnLayout {
         Layout.bottomMargin: Style.marginS
     }
 
-    // ── Behavior section ──
+    // ═══════════════════════════════════════
+    // Behavior
+    // ═══════════════════════════════════════
+
+    NLabel {
+        label: "Behavior"
+    }
+
     NToggle {
-        id: toggleAllowCustom
         Layout.fillWidth: true
         label: "Allow custom input"
         description: "Let users type and submit text that isn't in the item list"
         checked: root.editAllowCustom
-        onToggled: function(newValue) { root.editAllowCustom = newValue }
+        onToggled: function(v) { root.editAllowCustom = v }
     }
 
     NTextInput {
@@ -110,21 +128,19 @@ ColumnLayout {
     }
 
     NToggle {
-        id: toggleCloseOnSelect
         Layout.fillWidth: true
-        label: "Close launcher on select"
-        description: "Automatically close the launcher when an item is selected"
+        label: "Close panel on select"
+        description: "Automatically close the panel when an item is selected"
         checked: root.editCloseOnSelect
-        onToggled: function(newValue) { root.editCloseOnSelect = newValue }
+        onToggled: function(v) { root.editCloseOnSelect = v }
     }
 
     NToggle {
-        id: toggleShowToast
         Layout.fillWidth: true
         label: "Show toast on select"
         description: "Display a notification when an item is selected"
         checked: root.editShowToast
-        onToggled: function(newValue) { root.editShowToast = newValue }
+        onToggled: function(v) { root.editShowToast = v }
     }
 
     NDivider {
@@ -133,11 +149,27 @@ ColumnLayout {
         Layout.bottomMargin: Style.marginS
     }
 
-    // ── Advanced section ──
+    // ═══════════════════════════════════════
+    // Advanced
+    // ═══════════════════════════════════════
+
+    NLabel {
+        label: "Advanced"
+    }
+
+    NTextInput {
+        Layout.fillWidth: true
+        label: "Result file path"
+        description: "Where selections are written. Scripts read this file after the panel closes."
+        placeholderText: "/tmp/noctalia-dmenu-result"
+        text: root.editResultFile
+        onTextChanged: root.editResultFile = text
+    }
+
     NTextInput {
         Layout.fillWidth: true
         label: "Default separator"
-        description: "Separator for simple mode (\\n for newline, | for pipe, etc.)"
+        description: "Separator for showSimple mode (\\n for newline, | for pipe, etc.)"
         placeholderText: "\\n"
         text: root.editSeparator === "\n" ? "\\n" : root.editSeparator
         onTextChanged: {
@@ -176,9 +208,11 @@ ColumnLayout {
         pluginApi.pluginSettings.allowCustomInput = root.editAllowCustom;
         pluginApi.pluginSettings.showToastOnSelect = root.editShowToast;
         pluginApi.pluginSettings.closeOnSelect = root.editCloseOnSelect;
-        pluginApi.pluginSettings.resultFormat = root.editResultFormat;
         pluginApi.pluginSettings.customInputPrefix = root.editCustomInputPrefix;
         pluginApi.pluginSettings.maxResults = root.editMaxResults;
+        pluginApi.pluginSettings.panelPosition = root.editPanelPosition;
+        pluginApi.pluginSettings.showMatchCount = root.editShowMatchCount;
+        pluginApi.pluginSettings.showFooter = root.editShowFooter;
         pluginApi.saveSettings();
 
         Logger.i("DmenuProvider", "Settings saved");

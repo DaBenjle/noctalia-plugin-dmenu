@@ -9,21 +9,66 @@ FocusScope {
 
     property var pluginApi: null
 
+    // ── SmartPanel integration ──
     readonly property var geometryPlaceholder: panelContainer
     readonly property bool allowAttach: true
-    property real contentPreferredWidth: 620 * Style.uiScaleRatio
-    property real contentPreferredHeight: 480 * Style.uiScaleRatio
+
+    // Match launcher sizing
+    property real contentPreferredWidth: Math.round(500 * Style.uiScaleRatio) + Style.margin2L
+    property real contentPreferredHeight: Math.round(600 * Style.uiScaleRatio)
+
+    // ── Positioning ──
+    // Reads panelPosition from plugin settings. Values:
+    //   "follow_launcher" (default) — same position as the app launcher
+    //   "center", "top_center", "bottom_center", "top_left", etc.
+    readonly property string screenBarPosition: Settings.getBarPositionForScreen(pluginApi?.panelOpenScreen?.name)
+
+    readonly property string configuredPosition: {
+        var pos = pluginApi?.pluginSettings?.panelPosition
+            || pluginApi?.manifest?.metadata?.defaultSettings?.panelPosition
+            || "follow_launcher";
+        if (pos === "follow_launcher")
+            return Settings.data.appLauncher.position;
+        return pos;
+    }
+
+    readonly property string panelPosition: {
+        var pos = configuredPosition;
+        if (pos === "follow_bar") {
+            if (screenBarPosition === "left" || screenBarPosition === "right")
+                return "center_" + screenBarPosition;
+            return screenBarPosition + "_center";
+        }
+        return pos;
+    }
+
+    // Expose anchor properties that PluginPanelSlot passes to SmartPanel
+    readonly property bool panelAnchorHorizontalCenter: panelPosition === "center" || panelPosition.endsWith("_center")
+    readonly property bool panelAnchorVerticalCenter: panelPosition === "center"
+    readonly property bool panelAnchorTop: panelPosition.startsWith("top_")
+    readonly property bool panelAnchorBottom: panelPosition.startsWith("bottom_")
+    readonly property bool panelAnchorLeft: panelPosition !== "center" && panelPosition.endsWith("_left")
+    readonly property bool panelAnchorRight: panelPosition !== "center" && panelPosition.endsWith("_right")
+
+    // ── Visual settings ──
+    readonly property bool showMatchCount: pluginApi?.pluginSettings?.showMatchCount
+        ?? pluginApi?.manifest?.metadata?.defaultSettings?.showMatchCount ?? true
+    readonly property bool showFooter: pluginApi?.pluginSettings?.showFooter
+        ?? pluginApi?.manifest?.metadata?.defaultSettings?.showFooter ?? true
 
     anchors.fill: parent
     focus: true
 
+    // ── Convenience ──
     readonly property var main: pluginApi?.mainInstance ?? null
     readonly property var dmenuState: main?.state ?? null
 
+    // ── Local state ──
     property string filterText: ""
     property int selectedIndex: 0
     property var filteredItems: []
 
+    // ── Filtering ──
     function updateFilter() {
         var st = dmenuState;
         if (!st || !st.active) {
@@ -45,11 +90,8 @@ FocusScope {
                 || desc.toLowerCase().indexOf(query) !== -1
                 || val.toLowerCase().indexOf(query) !== -1) {
                 results.push({
-                    name: nm,
-                    description: desc,
-                    value: val,
-                    icon: item.icon || "",
-                    originalIndex: i,
+                    name: nm, description: desc, value: val,
+                    icon: item.icon || "", originalIndex: i,
                     isCustomInput: false
                 });
             }
@@ -61,12 +103,9 @@ FocusScope {
             });
             if (!hasExact) {
                 results.push({
-                    name: query,
-                    description: "Use as custom input",
-                    value: query,
-                    icon: "text-plus",
-                    originalIndex: -1,
-                    isCustomInput: true
+                    name: query, description: "Use as custom input",
+                    value: query, icon: "text-plus",
+                    originalIndex: -1, isCustomInput: true
                 });
             }
         }
@@ -92,6 +131,41 @@ FocusScope {
             flickable.contentY = itemY + 48 - flickable.height;
     }
 
+    function handleKeyPress(event) {
+        if (event.key === Qt.Key_Down) {
+            selectedIndex = Math.min(selectedIndex + 1, filteredItems.length - 1);
+            scrollToSelected();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Up) {
+            selectedIndex = Math.max(selectedIndex - 1, 0);
+            scrollToSelected();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            activateItem(selectedIndex);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Escape) {
+            if (main) main.endSession();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Tab) {
+            selectedIndex = (selectedIndex + 1) % Math.max(1, filteredItems.length);
+            scrollToSelected();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Backtab) {
+            selectedIndex = selectedIndex <= 0
+                ? filteredItems.length - 1 : selectedIndex - 1;
+            scrollToSelected();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Home) {
+            selectedIndex = 0;
+            scrollToSelected();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_End) {
+            selectedIndex = Math.max(0, filteredItems.length - 1);
+            scrollToSelected();
+            event.accepted = true;
+        }
+    }
+
     // ── Signals ──
     Connections {
         target: root.main
@@ -100,9 +174,9 @@ FocusScope {
         function onItemsChanged() {
             root.filterText = "";
             root.selectedIndex = 0;
-            searchField.text = "";
+            if (searchInput.inputItem) searchInput.inputItem.text = "";
             root.updateFilter();
-            searchField.forceActiveFocus();
+            focusTimer.restart();
         }
 
         function onSessionEnded(sid) {
@@ -135,7 +209,11 @@ FocusScope {
     Timer {
         id: focusTimer
         interval: 150
-        onTriggered: searchField.forceActiveFocus()
+        onTriggered: {
+            if (searchInput.inputItem) {
+                searchInput.inputItem.forceActiveFocus();
+            }
+        }
     }
 
     // ── UI ──
@@ -144,95 +222,44 @@ FocusScope {
         anchors.fill: parent
         color: "transparent"
 
-        Column {
+        ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Style.marginL
-            spacing: Style.marginM
+            anchors.topMargin: Style.marginL
+            anchors.bottomMargin: Style.marginL
+            spacing: Style.marginL
 
-            // ── Search bar ──
-            Rectangle {
-                id: searchBar
-                width: parent.width
-                height: 44
-                radius: Style.radiusM
-                color: Color.mSurface
-                border.color: searchField.activeFocus ? Color.mPrimary : Color.mOutline
-                border.width: 1
+            // ── Search input — same as LauncherCore ──
+            NTextInput {
+                id: searchInput
+                Layout.fillWidth: true
+                Layout.leftMargin: Style.marginL
+                Layout.rightMargin: Style.marginL
+                radius: Style.iRadiusM
+                fontSize: Style.fontSizeM
+                placeholderText: {
+                    var st = root.dmenuState;
+                    return (st && st.prompt) ? st.prompt : "Type to filter...";
+                }
+                text: root.filterText
+                onTextChanged: root.filterText = text
 
-                TextInput {
-                    id: searchField
-                    anchors.fill: parent
-                    anchors.leftMargin: Style.marginM
-                    anchors.rightMargin: Style.marginM
-                    verticalAlignment: TextInput.AlignVCenter
-                    font.pointSize: Style.fontSizeM
-                    color: Color.mOnSurface
-                    selectionColor: Color.mPrimary
-                    selectedTextColor: Color.mOnPrimary
-                    clip: true
-                    focus: true
-                    activeFocusOnTab: false
-
-                    onTextChanged: root.filterText = text
-
-                    Keys.onPressed: function(event) {
-                        if (event.key === Qt.Key_Down) {
-                            root.selectedIndex = Math.min(root.selectedIndex + 1, root.filteredItems.length - 1);
-                            root.scrollToSelected();
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Up) {
-                            root.selectedIndex = Math.max(root.selectedIndex - 1, 0);
-                            root.scrollToSelected();
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                            root.activateItem(root.selectedIndex);
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Escape) {
-                            if (root.main) root.main.endSession();
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                            if (event.modifiers & Qt.ShiftModifier) {
-                                root.selectedIndex = root.selectedIndex <= 0
-                                    ? root.filteredItems.length - 1
-                                    : root.selectedIndex - 1;
-                            } else {
-                                root.selectedIndex = (root.selectedIndex + 1) % Math.max(1, root.filteredItems.length);
-                            }
-                            root.scrollToSelected();
-                            event.accepted = true;
-                        }
+                Component.onCompleted: {
+                    if (searchInput.inputItem) {
+                        searchInput.inputItem.forceActiveFocus();
+                        searchInput.inputItem.Keys.onPressed.connect(function(event) {
+                            root.handleKeyPress(event);
+                        });
                     }
                 }
-
-                // Placeholder
-                Text {
-                    anchors.fill: parent
-                    anchors.leftMargin: Style.marginM
-                    anchors.rightMargin: Style.marginM
-                    verticalAlignment: Text.AlignVCenter
-                    font.pointSize: Style.fontSizeM
-                    color: Color.mOnSurfaceVariant
-                    visible: searchField.text === "" && !searchField.activeFocus
-                    text: {
-                        var st = root.dmenuState;
-                        return (st && st.prompt) ? st.prompt : "Type to filter...";
-                    }
-                }
-            }
-
-            // ── Match count ──
-            Text {
-                visible: root.filteredItems.length > 0 && root.filterText !== ""
-                text: root.filteredItems.length + " match" + (root.filteredItems.length !== 1 ? "es" : "")
-                font.pointSize: Style.fontSizeS
-                color: Color.mOnSurfaceVariant
             }
 
             // ── Results area ──
             Rectangle {
                 id: resultsArea
-                width: parent.width
-                height: parent.height - searchBar.height - Style.marginM * 2 - (root.filterText !== "" ? 20 : 0)
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.leftMargin: Style.marginL
+                Layout.rightMargin: Style.marginL
                 radius: Style.radiusL
                 color: Color.mSurfaceVariant
                 clip: true
@@ -247,7 +274,7 @@ FocusScope {
                     Column {
                         id: resultsColumn
                         width: flickable.width
-                        spacing: 2
+                        spacing: Style.marginS
 
                         Repeater {
                             model: root.filteredItems.length
@@ -323,8 +350,8 @@ FocusScope {
                     }
                 }
 
-                // Empty state — centered in resultsArea, not in Flickable
-                Text {
+                // Empty state — centered in resultsArea
+                NText {
                     anchors.centerIn: parent
                     visible: root.filteredItems.length === 0
                     text: {
@@ -333,8 +360,32 @@ FocusScope {
                         if (root.filterText !== "") return "No matches";
                         return "No items";
                     }
-                    font.pointSize: Style.fontSizeM
+                    pointSize: Style.fontSizeM
                     color: Color.mOnSurfaceVariant
+                }
+            }
+
+            // ── Footer ──
+            ColumnLayout {
+                visible: root.showFooter
+                Layout.leftMargin: Style.marginL
+                Layout.rightMargin: Style.marginL
+
+                NText {
+                    Layout.fillWidth: true
+                    text: {
+                        if (root.filteredItems.length === 0) {
+                            if (root.filterText) return "No results";
+                            return "";
+                        }
+                        var prefix = "";
+                        if (root.filterText && root.showMatchCount)
+                            prefix = root.filteredItems.length + " of " + (root.dmenuState ? root.dmenuState.items.length : 0) + " · ";
+                        return prefix + root.filteredItems.length + " result" + (root.filteredItems.length !== 1 ? "s" : "");
+                    }
+                    pointSize: Style.fontSizeXS
+                    color: Color.mOnSurfaceVariant
+                    horizontalAlignment: Text.AlignCenter
                 }
             }
         }
