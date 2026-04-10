@@ -91,8 +91,8 @@ FocusScope {
                 || val.toLowerCase().indexOf(query) !== -1) {
                 results.push({
                     name: nm, description: desc, value: val,
-                    icon: item.icon || "", originalIndex: i,
-                    isCustomInput: false
+                    icon: item.icon || "", image: item.image || "",
+                    originalIndex: i, isCustomInput: false
                 });
             }
         }
@@ -298,20 +298,38 @@ FocusScope {
                                     anchors.rightMargin: Style.marginM
                                     spacing: Style.marginM
 
+                                    // Icon or image
                                     Item {
-                                        width: 24
+                                        width: 32
                                         height: parent.height
-                                        visible: (itemRect.itemData.icon || "") !== ""
+                                        visible: (itemRect.itemData.icon || "") !== "" || (itemRect.itemData.image || "") !== ""
+
+                                        // Tabler icon (when no image)
                                         NIcon {
                                             anchors.centerIn: parent
+                                            visible: (itemRect.itemData.image || "") === "" && (itemRect.itemData.icon || "") !== ""
                                             icon: itemRect.itemData.icon || ""
                                             color: itemRect.isSelected ? Color.mOnPrimary : Color.mOnSurface
+                                        }
+
+                                        // File image (when image path is set)
+                                        Image {
+                                            anchors.centerIn: parent
+                                            width: 28
+                                            height: 28
+                                            visible: (itemRect.itemData.image || "") !== ""
+                                            source: (itemRect.itemData.image || "") !== ""
+                                                ? "file://" + itemRect.itemData.image : ""
+                                            fillMode: Image.PreserveAspectFit
+                                            smooth: true
+                                            sourceSize.width: 56
+                                            sourceSize.height: 56
                                         }
                                     }
 
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - Style.marginM * 2 - (itemRect.itemData.icon ? 36 : 0)
+                                        width: parent.width - Style.marginM * 2 - ((itemRect.itemData.icon || itemRect.itemData.image) ? 44 : 0)
                                         spacing: 2
 
                                         Text {

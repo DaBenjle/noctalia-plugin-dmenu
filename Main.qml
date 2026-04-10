@@ -219,6 +219,7 @@ Item {
                 description: item.description || "",
                 value: item.value || item.name || item.label || "",
                 icon: item.icon || "",
+                image: item.image || "",
                 isTablerIcon: item.isTablerIcon !== undefined ? item.isTablerIcon : true,
                 altActions: item.altActions || {},
                 index: idx
@@ -311,26 +312,16 @@ Item {
         handleSelection(prefix + text, -1, "");
     }
 
-    // ── Internal: shared implementation for show/showJson ──
-    function _doShow(configJson) {
+    // ── Internal: build session from parsed config ──
+    function _doShow(config) {
         if (!pluginApi) {
             Logger.e("DmenuProvider", "pluginApi not available");
             return;
         }
-
-        var config;
-        try {
-            config = JSON.parse(configJson);
-        } catch (e) {
-            Logger.e("DmenuProvider", "Invalid JSON in show():", e);
-            return;
-        }
-
         config.items = root.parseItems(config.items || [], null);
         var merged = root.buildConfig(config);
         root.beginSession(merged);
         root.openPanelSmart();
-
         Logger.i("DmenuProvider", "Session " + root.state.sessionId
             + " started with " + merged.items.length + " items");
     }
@@ -339,38 +330,99 @@ Item {
     IpcHandler {
         target: "plugin:dmenu"
 
-        function show(configJson: string) {
-            root._doShow(configJson);
-        }
-
-        function showJson(configJson: string, unused: string) {
-            root._doShow(configJson);
-        }
-
-        function showSimple(items: string, separator: string, prompt: string, callbackCmd: string) {
+        // ── showItems(itemsList, options) ──
+        // Items as a delimiter-separated string. Options is JSON (or "").
+        //
+        // Options:
+        //   separator    — delimiter (default: "\n")
+        //   prompt       — placeholder text in search bar
+        //   callbackCmd  — command to run on selection ({} = value)
+        //   resultFile   — override result file path
+        //   resultFormat — "plain" (default), "json", or "index"
+        //   allowCustomInput — true/false
+        //   closeOnSelect    — true/false
+        //   maxResults       — number
+        //
+        // Examples:
+        //   showItems "a|b|c" '{"separator":"|","prompt":"Pick:"}'
+        //   showItems "one\ntwo\nthree" ""
+        function showItems(itemsList: string, options: string) {
             if (!pluginApi) return;
-
-            var sep = (separator && separator !== "") ? separator : "\n";
-            var parsed = root.parseItems(items, sep);
-            var merged = root.buildConfig({
-                items: parsed,
-                prompt: prompt || "",
-                callbackCmd: callbackCmd || ""
-            });
+            var opts = {};
+            if (options && options !== "") {
+                try { opts = JSON.parse(options); }
+                catch (e) {
+                    Logger.e("DmenuProvider", "Invalid options JSON:", e);
+                    return;
+                }
+            }
+            var sep = opts.separator || "\n";
+            var parsed = root.parseItems(itemsList, sep);
+            opts.items = parsed;
+            var merged = root.buildConfig(opts);
             root.beginSession(merged);
             root.openPanelSmart();
-
             Logger.i("DmenuProvider", "Session " + root.state.sessionId
-                + " (simple) started with " + parsed.length + " items");
+                + " started with " + merged.items.length + " items");
         }
 
-        function showFromFile(filePath: string, separator: string, prompt: string, callbackCmd: string) {
+        // ── showJson(itemsArray, options) ──
+        // Items as a JSON array (strings, objects, or mixed). Options is JSON (or "").
+        //
+        // Item objects:
+        //   name        — display text (required for objects)
+        //   value       — return value (defaults to name)
+        //   description — subtitle text
+        //   icon        — Tabler icon name (e.g. "browser", "star")
+        //   image       — path to an image file (overrides icon)
+        //
+        // Options: same as showItems (except no separator).
+        //
+        // Examples:
+        //   showJson '["a","b","c"]' '{"prompt":"Pick:"}'
+        //   showJson '[{"name":"Firefox","value":"firefox","icon":"browser"}]' '{}'
+        //   showJson '[{"name":"Photo","image":"/tmp/photo.png"}]' ""
+        function showJson(itemsArray: string, options: string) {
             if (!pluginApi) return;
-            fileLoader.separator = (separator && separator !== "") ? separator : "\n";
-            fileLoader.prompt = prompt || "";
-            fileLoader.callbackCmd = callbackCmd || "";
-            // Reset path first to force FileView to re-fire onLoaded
-            // even if the same file is requested again
+            var items, opts = {};
+            try { items = JSON.parse(itemsArray); }
+            catch (e) {
+                Logger.e("DmenuProvider", "Invalid items JSON:", e);
+                return;
+            }
+            if (options && options !== "") {
+                try { opts = JSON.parse(options); }
+                catch (e) {
+                    Logger.e("DmenuProvider", "Invalid options JSON:", e);
+                    return;
+                }
+            }
+            Logger.d("DmenuProvider", "Parsed items:", JSON.stringify(items));
+            opts.items = root.normalizeItems(items);
+            var merged = root.buildConfig(opts);
+            root.beginSession(merged);
+            root.openPanelSmart();
+            Logger.i("DmenuProvider", "Session " + root.state.sessionId
+                + " started with " + merged.items.length + " items");
+        }
+
+        // ── showFromFile(filePath, options) ──
+        // Read items from a file (one per line or with custom separator).
+        // Options is JSON (or ""). Supports separator in options.
+        function showFromFile(filePath: string, options: string) {
+            if (!pluginApi) return;
+            var opts = {};
+            if (options && options !== "") {
+                try { opts = JSON.parse(options); }
+                catch (e) {
+                    Logger.e("DmenuProvider", "Invalid options JSON:", e);
+                    return;
+                }
+            }
+            fileLoader.separator = opts.separator || "\n";
+            fileLoader.prompt = opts.prompt || "";
+            fileLoader.callbackCmd = opts.callbackCmd || "";
+            fileLoader.options = opts;
             fileLoader.path = "";
             fileLoader.path = filePath;
         }
@@ -404,15 +456,14 @@ Item {
         property string separator: "\n"
         property string prompt: ""
         property string callbackCmd: ""
+        property var options: ({})
 
         onLoaded: {
             var content = text();
             var parsed = root.parseItems(content, fileLoader.separator);
-            var merged = root.buildConfig({
-                items: parsed,
-                prompt: fileLoader.prompt,
-                callbackCmd: fileLoader.callbackCmd
-            });
+            var opts = fileLoader.options || {};
+            opts.items = parsed;
+            var merged = root.buildConfig(opts);
             root.beginSession(merged);
             root.openPanelSmart();
 

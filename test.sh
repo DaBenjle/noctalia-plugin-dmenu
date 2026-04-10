@@ -1,436 +1,328 @@
 #!/usr/bin/env bash
-#
-# test-dmenu.sh — Interactive test suite for the noctalia-dmenu plugin.
-#
-# Run this from a terminal while Noctalia is running with the plugin enabled.
-# Each test opens the launcher — make a selection (or press Escape) to continue.
-#
-# Usage: ./test-dmenu.sh [test-number]
-#   Run a specific test by number, or run all tests sequentially.
-#
-
 set -euo pipefail
 
-RESULT_FILE="/tmp/noctalia-dmenu-result"
-CALLBACK_FILE="/tmp/noctalia-dmenu-callback-test"
+RESULT="/tmp/noctalia-dmenu-result"
+CB="/tmp/noctalia-dmenu-cb-out"
 QS="noctalia-shell"
-PASS=0
-FAIL=0
-SKIP=0
+PASS=0 FAIL=0 SKIP=0
 
-# ── Helpers ──
-
-red()    { printf '\033[1;31m%s\033[0m' "$*"; }
 green()  { printf '\033[1;32m%s\033[0m' "$*"; }
+red()    { printf '\033[1;31m%s\033[0m' "$*"; }
 yellow() { printf '\033[1;33m%s\033[0m' "$*"; }
 cyan()   { printf '\033[1;36m%s\033[0m' "$*"; }
 bold()   { printf '\033[1m%s\033[0m' "$*"; }
 
-cleanup() {
-    rm -f "$RESULT_FILE" "${RESULT_FILE}.tmp" "$CALLBACK_FILE"
-}
+cleanup() { rm -f "$RESULT" "${RESULT}.tmp" "$CB"; }
 
 wait_result() {
-    local timeout="${1:-10}"
-    local elapsed=0
-    while [[ ! -f "$RESULT_FILE" ]]; do
-        sleep 0.1
-        elapsed=$((elapsed + 1))
-        if [[ "$elapsed" -ge $((timeout * 10)) ]]; then
-            return 1
-        fi
-    done
-    return 0
+    local t="${1:-15}" e=0
+    while [[ ! -f "$RESULT" ]]; do
+        sleep 0.1; e=$((e+1)); [[ "$e" -ge $((t*10)) ]] && return 1
+    done; return 0
 }
 
-check_result() {
-    local expected="$1"
-    local label="$2"
-    if [[ -f "$RESULT_FILE" ]]; then
-        local actual
-        actual=$(cat "$RESULT_FILE")
-        if [[ "$actual" == "$expected" ]]; then
-            echo "  $(green "✓") Result: $(bold "$actual")"
-            PASS=$((PASS + 1))
-            return 0
+expect() {
+    local want="$1"
+    if [[ -f "$RESULT" ]]; then
+        local got; got=$(cat "$RESULT")
+        if [[ "$got" == "$want" ]]; then
+            echo "  $(green ✓) $(bold "$got")"; PASS=$((PASS+1))
         else
-            echo "  $(red "✗") Expected: $(bold "$expected"), got: $(bold "$actual")"
-            FAIL=$((FAIL + 1))
-            return 1
+            echo "  $(red ✗) expected $(bold "$want"), got $(bold "$got")"; FAIL=$((FAIL+1))
         fi
-    else
-        echo "  $(red "✗") No result file (user cancelled or timeout)"
-        FAIL=$((FAIL + 1))
-        return 1
-    fi
+    else echo "  $(red ✗) no result file"; FAIL=$((FAIL+1)); fi
 }
 
-check_result_contains() {
-    local expected="$1"
-    local label="$2"
-    if [[ -f "$RESULT_FILE" ]]; then
-        local actual
-        actual=$(cat "$RESULT_FILE")
-        if echo "$actual" | grep -qF "$expected"; then
-            echo "  $(green "✓") Result contains '${expected}': $(bold "$actual")"
-            PASS=$((PASS + 1))
-            return 0
+expect_contains() {
+    if [[ -f "$RESULT" ]]; then
+        local got; got=$(cat "$RESULT")
+        if echo "$got" | grep -qF "$1"; then
+            echo "  $(green ✓) contains '$1': $(bold "$got")"; PASS=$((PASS+1))
         else
-            echo "  $(red "✗") Expected to contain: $(bold "$expected"), got: $(bold "$actual")"
-            FAIL=$((FAIL + 1))
-            return 1
+            echo "  $(red ✗) should contain '$1', got $(bold "$got")"; FAIL=$((FAIL+1))
         fi
-    else
-        echo "  $(red "✗") No result file"
-        FAIL=$((FAIL + 1))
-        return 1
-    fi
+    else echo "  $(red ✗) no result file"; FAIL=$((FAIL+1)); fi
 }
 
-prompt_continue() {
-    echo ""
-    read -rp "  Press Enter to continue to next test... " _
-}
+skip() { echo "  $(yellow ⊘) skipped"; SKIP=$((SKIP+1)); }
+cont() { echo ""; read -rp "  Enter to continue... " _; }
 
-header() {
-    local num="$1"
-    local title="$2"
+hdr() {
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  $(cyan "Test $num"): $(bold "$title")"
+    echo "  $(cyan "Test $1"): $(bold "$2")"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
-instruct() {
-    echo "  $(yellow "→") $*"
-}
-
-# ── Tests ──
+# ═══════════════════════════════════════
+# IPC: showItems
+# ═══════════════════════════════════════
 
 test_1() {
-    header 1 "showSimple — basic 3 items"
-    instruct "Select 'banana' from the launcher"
+    hdr 1 "showItems — pipe-delimited"
+    echo "  $(yellow →) Select 'banana'"
     cleanup
-    "$QS" ipc call plugin:dmenu showSimple "apple|banana|cherry" "|" "Pick a fruit:" ""
-    if wait_result 15; then
-        check_result "banana" "showSimple basic"
-    else
-        echo "  $(yellow "⊘") Skipped (no selection made)"
-        SKIP=$((SKIP + 1))
-    fi
+    "$QS" ipc call plugin:dmenu showItems "apple|banana|cherry" '{"separator":"|","prompt":"Fruit:"}'
+    wait_result && expect "banana" || skip
     cleanup
 }
 
 test_2() {
-    header 2 "showJson — structured items with descriptions"
-    instruct "Select 'Zen Browser' from the launcher"
+    hdr 2 "showItems — newline-delimited, empty options"
+    echo "  $(yellow →) Select 'two'"
     cleanup
-    "$QS" ipc call plugin:dmenu showJson '{"items":[{"name":"Firefox","value":"firefox","description":"Standard browser"},{"name":"Zen Browser","value":"zen","description":"Privacy focused"},{"name":"Chromium","value":"chromium","description":"Google-based"}],"prompt":"Open browser:"}' x
-    if wait_result 15; then
-        check_result "zen" "showJson structured"
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+    printf -v items "one\ntwo\nthree"
+    "$QS" ipc call plugin:dmenu showItems "$items" ""
+    wait_result && expect "two" || skip
     cleanup
 }
 
+# ═══════════════════════════════════════
+# IPC: showJson
+# ═══════════════════════════════════════
+
 test_3() {
-    header 3 "showSimple — search/filter"
-    instruct "Type 'gra' to filter, then select 'grape'"
+    hdr 3 "showJson — structured items"
+    echo "  $(yellow →) Select 'Zen Browser'"
     cleanup
-    "$QS" ipc call plugin:dmenu showSimple "apple|grape|grapefruit|banana|orange|mango" "|" "" ""
-    if wait_result 20; then
-        check_result "grape" "search filter"
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+    local items='[{"name":"Firefox","value":"firefox","description":"Standard"},{"name":"Zen Browser","value":"zen","description":"Privacy"},{"name":"Chromium","value":"chromium"}]'
+    local opts='{"prompt":"Browser:"}'
+    "$QS" ipc call plugin:dmenu showJson "$items" "$opts"
+    wait_result && expect "zen" || skip
     cleanup
 }
 
 test_4() {
-    header 4 "showJson — custom input"
-    instruct "Type 'hello-world' (not in list) and select the 'Use as custom input' entry"
-    echo "  $(yellow "Note"): If you have a custom input prefix in settings, it will be prepended."
+    hdr 4 "showJson — mixed strings and objects"
+    echo "  $(yellow →) Select 'detailed'"
     cleanup
-    "$QS" ipc call plugin:dmenu showJson '{"items":["option-a","option-b"],"allowCustomInput":true}' x
-    if wait_result 20; then
-        local actual
-        actual=$(cat "$RESULT_FILE")
-        if echo "$actual" | grep -qF "hello-world"; then
-            echo "  $(green "✓") Custom input accepted: $(bold "$actual")"
-            PASS=$((PASS + 1))
-        else
-            echo "  $(yellow "⊘") Got: $(bold "$actual") (might have selected a list item)"
-            SKIP=$((SKIP + 1))
-        fi
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+    local items='["simple",{"name":"detailed","value":"detail-val","description":"Has a description"},"another"]'
+    "$QS" ipc call plugin:dmenu showJson "$items" ''
+    wait_result && expect "detail-val" || skip
     cleanup
 }
 
 test_5() {
-    header 5 "Result format — JSON"
-    instruct "Select 'beta' (the second item)"
+    hdr 5 "showJson — with icons"
+    echo "  $(yellow →) Select any item (visual check: icons should appear)"
     cleanup
-    "$QS" ipc call plugin:dmenu showJson '{"items":["alpha","beta","gamma"],"resultFormat":"json"}' x
-    if wait_result 15; then
-        check_result_contains '"value":"beta"' "json format"
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+    local items='[{"name":"Home","value":"home","icon":"home"},{"name":"Settings","value":"settings","icon":"settings"},{"name":"Star","value":"star","icon":"star"}]'
+    "$QS" ipc call plugin:dmenu showJson "$items" '{"prompt":"Icons test:"}'
+    wait_result && { local r; r=$(cat "$RESULT"); echo "  $(green ✓) selected $(bold "$r")"; PASS=$((PASS+1)); } || skip
     cleanup
 }
 
+# ═══════════════════════════════════════
+# Search & filter
+# ═══════════════════════════════════════
+
 test_6() {
-    header 6 "Result format — index"
-    instruct "Select 'gamma' (the third item, index 2)"
+    hdr 6 "Search filter"
+    echo "  $(yellow →) Type 'gra' then select 'grape'"
     cleanup
-    "$QS" ipc call plugin:dmenu showJson '{"items":["alpha","beta","gamma"],"resultFormat":"index"}' x
-    if wait_result 15; then
-        check_result "2" "index format"
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+    "$QS" ipc call plugin:dmenu showItems "apple|grape|grapefruit|banana|orange" '{"separator":"|"}'
+    wait_result 20 && expect "grape" || skip
     cleanup
 }
 
 test_7() {
-    header 7 "Callback execution"
-    instruct "Select any item"
+    hdr 7 "Custom input"
+    echo "  $(yellow →) Type 'my-value' and select the custom input entry"
     cleanup
-    rm -f "$CALLBACK_FILE"
-
-    # Write the callback as a temp script to avoid quoting issues
-    local cb_script="/tmp/noctalia-dmenu-cb-test.sh"
-    cat > "$cb_script" << 'SCRIPT'
-#!/usr/bin/env bash
-printf '%s' "$1" > /tmp/noctalia-dmenu-callback-test
-SCRIPT
-    chmod +x "$cb_script"
-
-    "$QS" ipc call plugin:dmenu showJson "{\"items\":[\"red\",\"green\",\"blue\"],\"callbackCmd\":\"$cb_script '{}'\"}" x
-    if wait_result 15; then
-        local selected
-        selected=$(cat "$RESULT_FILE")
-        echo "  Selected: $(bold "$selected")"
-        sleep 0.5
-        if [[ -f "$CALLBACK_FILE" ]]; then
-            local cb_result
-            cb_result=$(cat "$CALLBACK_FILE")
-            if [[ "$cb_result" == "$selected" ]]; then
-                echo "  $(green "✓") Callback wrote correct value: $(bold "$cb_result")"
-                PASS=$((PASS + 1))
-            else
-                echo "  $(red "✗") Callback wrote: $(bold "$cb_result"), expected: $(bold "$selected")"
-                FAIL=$((FAIL + 1))
-            fi
-        else
-            echo "  $(red "✗") Callback file not created"
-            FAIL=$((FAIL + 1))
-        fi
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+    "$QS" ipc call plugin:dmenu showJson '["a","b"]' '{"allowCustomInput":true}'
+    wait_result 20 && expect_contains "my-value" || skip
     cleanup
-    rm -f "$CALLBACK_FILE" "$cb_script"
 }
 
+# ═══════════════════════════════════════
+# Result formats
+# ═══════════════════════════════════════
+
 test_8() {
-    header 8 "Chaining — two sequential menus"
-    instruct "Select 'Power' in the first menu, then 'Reboot' in the second"
-
+    hdr 8 "Result format — JSON"
+    echo "  $(yellow →) Select 'beta'"
     cleanup
-
-    # Create a chaining script that the callback will invoke
-    local chain_script="/tmp/noctalia-dmenu-chain.sh"
-    cat > "$chain_script" << 'CHAINSCRIPT'
-#!/usr/bin/env bash
-# This is called by the first menu's callback with the selection as $1
-noctalia-shell ipc call plugin:dmenu showSimple "Shutdown|Reboot|Suspend" "|" "Power submenu (picked: $1):" ""
-CHAINSCRIPT
-    chmod +x "$chain_script"
-
-    "$QS" ipc call plugin:dmenu showJson "{\"items\":[\"Power\",\"Display\",\"Network\"],\"callbackCmd\":\"$chain_script '{}'\"}" x
-
-    # Wait for first selection
-    if wait_result 15; then
-        local first
-        first=$(cat "$RESULT_FILE")
-        echo "  First selection: $(bold "$first")"
-        cleanup
-
-        # Wait for second selection (the chained menu)
-        echo "  $(yellow "→") Now select 'Reboot' from the second menu"
-        if wait_result 15; then
-            check_result "Reboot" "chaining"
-        else
-            echo "  $(red "✗") Second menu didn't appear or no selection"
-            FAIL=$((FAIL + 1))
-        fi
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+    "$QS" ipc call plugin:dmenu showJson '["alpha","beta","gamma"]' '{"resultFormat":"json"}'
+    wait_result && expect_contains '"value":"beta"' || skip
     cleanup
-    rm -f "$chain_script"
 }
 
 test_9() {
-    header 9 "showFromFile — read items from file"
-    instruct "Select 'line-three'"
+    hdr 9 "Result format — index"
+    echo "  $(yellow →) Select 'gamma' (third item, index 2)"
     cleanup
-    local tmpfile="/tmp/noctalia-dmenu-test-items.txt"
-    printf "line-one\nline-two\nline-three\nline-four\n" > "$tmpfile"
-    "$QS" ipc call plugin:dmenu showFromFile "$tmpfile" "\n" "File test:" ""
-    if wait_result 15; then
-        check_result "line-three" "showFromFile"
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+    "$QS" ipc call plugin:dmenu showJson '["alpha","beta","gamma"]' '{"resultFormat":"index"}'
+    wait_result && expect "2" || skip
     cleanup
-    rm -f "$tmpfile"
 }
 
+# ═══════════════════════════════════════
+# Callbacks & chaining
+# ═══════════════════════════════════════
+
 test_10() {
-    header 10 "toggle — open/close"
-    instruct "The panel should open. Press Escape to close it."
-    "$QS" ipc call plugin:dmenu toggle
-    sleep 2
-    echo "  $(green "✓") toggle executed (visual check)"
-    PASS=$((PASS + 1))
+    hdr 10 "Callback"
+    echo "  $(yellow →) Select any item"
+    cleanup; rm -f "$CB"
+    local script="/tmp/noctalia-dmenu-cb.sh"
+    printf '#!/usr/bin/env bash\nprintf "%%s" "$1" > %s\n' "$CB" > "$script"
+    chmod +x "$script"
+    "$QS" ipc call plugin:dmenu showJson '["red","green","blue"]' "{\"callbackCmd\":\"$script '{}'\"}"
+    if wait_result; then
+        local sel; sel=$(cat "$RESULT"); echo "  Selected: $(bold "$sel")"
+        sleep 0.5
+        if [[ -f "$CB" ]] && [[ "$(cat "$CB")" == "$sel" ]]; then
+            echo "  $(green ✓) Callback wrote correct value"; PASS=$((PASS+1))
+        else
+            echo "  $(red ✗) Callback output mismatch"; FAIL=$((FAIL+1))
+        fi
+    else skip; fi
+    cleanup; rm -f "$CB" "$script"
 }
 
 test_11() {
-    header 11 "close — programmatic cancel"
-    instruct "The panel will open then close after 2 seconds automatically"
+    hdr 11 "Chaining — two sequential menus"
+    echo "  $(yellow →) Select 'Power', then 'Reboot'"
     cleanup
-    "$QS" ipc call plugin:dmenu showSimple "waiting|for|close" "|" "" ""
+    local script="/tmp/noctalia-dmenu-chain.sh"
+    cat > "$script" << 'EOF'
+#!/usr/bin/env bash
+noctalia-shell ipc call plugin:dmenu showItems "Shutdown|Reboot|Suspend" "{\"separator\":\"|\",\"prompt\":\"Power (picked: $1):\"}"
+EOF
+    chmod +x "$script"
+    "$QS" ipc call plugin:dmenu showJson '["Power","Display","Network"]' "{\"callbackCmd\":\"$script '{}'\"}"
+    if wait_result; then
+        echo "  First: $(bold "$(cat "$RESULT")")"
+        cleanup
+        echo "  $(yellow →) Now select 'Reboot'"
+        if wait_result; then expect "Reboot"; else
+            echo "  $(red ✗) Second menu didn't appear"; FAIL=$((FAIL+1))
+        fi
+    else skip; fi
+    cleanup; rm -f "$script"
+}
+
+# ═══════════════════════════════════════
+# File loading
+# ═══════════════════════════════════════
+
+test_12() {
+    hdr 12 "showFromFile"
+    echo "  $(yellow →) Select 'line-three'"
+    cleanup
+    local f="/tmp/noctalia-dmenu-items.txt"
+    printf "line-one\nline-two\nline-three\nline-four\n" > "$f"
+    "$QS" ipc call plugin:dmenu showFromFile "$f" '{"prompt":"File test:"}'
+    wait_result && expect "line-three" || skip
+    cleanup; rm -f "$f"
+}
+
+# ═══════════════════════════════════════
+# Panel lifecycle
+# ═══════════════════════════════════════
+
+test_13() {
+    hdr 13 "Programmatic close"
+    echo "  $(yellow →) Panel opens, auto-closes in 2s"
+    cleanup
+    "$QS" ipc call plugin:dmenu showItems "waiting|for|close" '{"separator":"|"}'
     sleep 2
     "$QS" ipc call plugin:dmenu close
     sleep 0.5
-    if [[ ! -f "$RESULT_FILE" ]]; then
-        echo "  $(green "✓") close() cancelled without writing result"
-        PASS=$((PASS + 1))
+    if [[ ! -f "$RESULT" ]]; then
+        echo "  $(green ✓) No result written"; PASS=$((PASS+1))
     else
-        echo "  $(red "✗") Result file exists after close (should not)"
-        FAIL=$((FAIL + 1))
-    fi
-    cleanup
-}
-
-test_12() {
-    header 12 "Rapid session replacement (no race)"
-    instruct "Three menus fire rapidly. Only the last ('C') should appear. Select 'C3'."
-    cleanup
-    "$QS" ipc call plugin:dmenu showSimple "A1|A2|A3" "|" "" ""
-    sleep 0.1
-    "$QS" ipc call plugin:dmenu showSimple "B1|B2|B3" "|" "" ""
-    sleep 0.1
-    "$QS" ipc call plugin:dmenu showSimple "C1|C2|C3" "|" "" ""
-    if wait_result 15; then
-        check_result "C3" "rapid replacement"
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
-    cleanup
-}
-
-test_13() {
-    header 13 "Special characters in items"
-    instruct "Select the item with quotes: He said \"hello\""
-    cleanup
-    "$QS" ipc call plugin:dmenu showSimple 'normal item|He said "hello"|path/to/file' "|" "" ""
-    if wait_result 15; then
-        local actual
-        actual=$(cat "$RESULT_FILE")
-        echo "  $(green "✓") Got: $(bold "$actual")"
-        PASS=$((PASS + 1))
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
+        echo "  $(red ✗) Result file exists"; FAIL=$((FAIL+1))
     fi
     cleanup
 }
 
 test_14() {
-    header 14 "Many items (performance)"
-    instruct "Type a number (e.g. '150') to filter, select any item"
+    hdr 14 "Rapid session replacement"
+    echo "  $(yellow →) Three menus fire rapidly. Select 'C3' from the last."
     cleanup
-    # Generate 500 items
+    "$QS" ipc call plugin:dmenu showItems "A1|A2|A3" '{"separator":"|"}'
+    sleep 0.1
+    "$QS" ipc call plugin:dmenu showItems "B1|B2|B3" '{"separator":"|"}'
+    sleep 0.1
+    "$QS" ipc call plugin:dmenu showItems "C1|C2|C3" '{"separator":"|","prompt":"Pick C3:"}'
+    wait_result && expect "C3" || skip
+    cleanup
+}
+
+# ═══════════════════════════════════════
+# Helper script (noctalia-dmenu)
+# ═══════════════════════════════════════
+
+test_15() {
+    hdr 15 "Helper: pipe mode"
+    echo "  $(yellow →) Select 'pear'"
+    cleanup
+    echo -e "apple\npear\nplum" | noctalia-dmenu -p "Pipe test:"
+    # noctalia-dmenu blocks until result, then prints to stdout
+    # but we also check the file
+    wait_result && expect "pear" || skip
+    cleanup
+}
+
+test_16() {
+    hdr 16 "Helper: file mode"
+    echo "  $(yellow →) Select 'gamma'"
+    cleanup
+    local f="/tmp/noctalia-dmenu-helper-items.txt"
+    printf "alpha\nbeta\ngamma\ndelta\n" > "$f"
+    noctalia-dmenu -f "$f" -p "File helper test:" || true
+    wait_result && expect "gamma" || skip
+    cleanup; rm -f "$f"
+}
+
+test_17() {
+    hdr 17 "Helper: custom separator"
+    echo "  $(yellow →) Select 'two'"
+    cleanup
+    echo "one::two::three" | noctalia-dmenu -s "::" -p "Custom sep:"
+    wait_result && expect "two" || skip
+    cleanup
+}
+
+test_18() {
+    hdr 18 "500 items (performance)"
+    echo "  $(yellow →) Type a number to filter, select any"
+    cleanup
     local items=""
     for i in $(seq 1 500); do
         [[ -n "$items" ]] && items+="|"
         items+="Item $i"
     done
-    "$QS" ipc call plugin:dmenu showSimple "$items" "|" "" ""
+    "$QS" ipc call plugin:dmenu showItems "$items" '{"separator":"|","prompt":"500 items:"}'
     if wait_result 30; then
-        local actual
-        actual=$(cat "$RESULT_FILE")
-        echo "  $(green "✓") Selected from 500 items: $(bold "$actual")"
-        PASS=$((PASS + 1))
-    else
-        echo "  $(yellow "⊘") Skipped"
-        SKIP=$((SKIP + 1))
-    fi
+        local r; r=$(cat "$RESULT")
+        echo "  $(green ✓) Selected: $(bold "$r")"; PASS=$((PASS+1))
+    else skip; fi
     cleanup
 }
 
-# ── Runner ──
+# ═══════════════════════════════════════
+# Runner
+# ═══════════════════════════════════════
 
 run_all() {
     echo ""
     echo "$(bold "╔══════════════════════════════════════════════════╗")"
-    echo "$(bold "║     noctalia-dmenu test suite                    ║")"
+    echo "$(bold "║       noctalia-dmenu test suite                  ║")"
     echo "$(bold "╚══════════════════════════════════════════════════╝")"
     echo ""
-    echo "  Each test opens the dmenu panel. Follow the instructions."
-    echo "  Press Escape to skip a test."
-    echo ""
-    read -rp "  Press Enter to start... " _
+    echo "  Press Escape to skip any test."
+    read -rp "  Enter to start... " _
 
-    test_1;  prompt_continue
-    test_2;  prompt_continue
-    test_3;  prompt_continue
-    test_4;  prompt_continue
-    test_5;  prompt_continue
-    test_6;  prompt_continue
-    test_7;  prompt_continue
-    test_8;  prompt_continue
-    test_9;  prompt_continue
-    test_10; prompt_continue
-    test_11; prompt_continue
-    test_12; prompt_continue
-    test_13; prompt_continue
-    test_14
+    for i in $(seq 1 18); do "test_$i"; cont; done
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  $(bold "Results")"
+    echo "  $(green Passed): $PASS  $(red Failed): $FAIL  $(yellow Skipped): $SKIP"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  $(green "Passed"): $PASS"
-    echo "  $(red "Failed"): $FAIL"
-    echo "  $(yellow "Skipped"): $SKIP"
-    echo ""
-
-    if [[ "$FAIL" -gt 0 ]]; then
-        exit 1
-    fi
+    [[ "$FAIL" -gt 0 ]] && exit 1
 }
 
-# Allow running individual tests
-if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
-    cleanup
-    "test_$1"
-    cleanup
-else
-    run_all
-fi
+if [[ "${1:-}" =~ ^[0-9]+$ ]]; then cleanup; "test_$1"; cleanup
+else run_all; fi
