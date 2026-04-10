@@ -9,7 +9,6 @@ FocusScope {
 
     property var pluginApi: null
 
-    // ── SmartPanel integration ──
     readonly property var geometryPlaceholder: panelContainer
     readonly property bool allowAttach: true
     property real contentPreferredWidth: 620 * Style.uiScaleRatio
@@ -18,23 +17,19 @@ FocusScope {
     anchors.fill: parent
     focus: true
 
-    // ── Convenience ──
     readonly property var main: pluginApi?.mainInstance ?? null
     readonly property var dmenuState: main?.state ?? null
 
-    // ── Local state ──
     property string filterText: ""
     property int selectedIndex: 0
     property var filteredItems: []
 
-    // ── Filtering ──
     function updateFilter() {
-        var st = root.dmenuState;
+        var st = dmenuState;
         if (!st || !st.active) {
             filteredItems = [];
             return;
         }
-
         var query = filterText.trim().toLowerCase();
         var items = st.items;
         var results = [];
@@ -45,15 +40,17 @@ FocusScope {
             var nm = item.name || "";
             var desc = item.description || "";
             var val = item.value || item.name || "";
-            var ico = item.icon || "";
-
             if (query === ""
                 || nm.toLowerCase().indexOf(query) !== -1
                 || desc.toLowerCase().indexOf(query) !== -1
                 || val.toLowerCase().indexOf(query) !== -1) {
                 results.push({
-                    name: nm, description: desc, value: val,
-                    icon: ico, originalIndex: i, isCustomInput: false
+                    name: nm,
+                    description: desc,
+                    value: val,
+                    icon: item.icon || "",
+                    originalIndex: i,
+                    isCustomInput: false
                 });
             }
         }
@@ -64,9 +61,12 @@ FocusScope {
             });
             if (!hasExact) {
                 results.push({
-                    name: query, description: "Use as custom input",
-                    value: query, icon: "text-plus",
-                    originalIndex: -1, isCustomInput: true
+                    name: query,
+                    description: "Use as custom input",
+                    value: query,
+                    icon: "text-plus",
+                    originalIndex: -1,
+                    isCustomInput: true
                 });
             }
         }
@@ -86,10 +86,9 @@ FocusScope {
 
     function scrollToSelected() {
         var itemY = selectedIndex * 50;
-        var viewTop = flickable.contentY;
-        var viewBottom = viewTop + flickable.height;
-        if (itemY < viewTop) flickable.contentY = itemY;
-        else if (itemY + 48 > viewBottom)
+        if (itemY < flickable.contentY)
+            flickable.contentY = itemY;
+        else if (itemY + 48 > flickable.contentY + flickable.height)
             flickable.contentY = itemY + 48 - flickable.height;
     }
 
@@ -107,12 +106,8 @@ FocusScope {
         }
 
         function onSessionEnded(sid) {
-            // Don't close if this is a rapid replacement (A → B → C).
-            // Main.qml sets replacingSession=true during beginSession.
             if (root.main && root.main.replacingSession) return;
-            if (pluginApi) {
-                pluginApi.closePanel(pluginApi.panelOpenScreen);
-            }
+            if (pluginApi) pluginApi.closePanel(pluginApi.panelOpenScreen);
         }
     }
 
@@ -155,9 +150,6 @@ FocusScope {
             spacing: Style.marginM
 
             // ── Search bar ──
-            // Using a raw TextInput inside a styled Rectangle so we have
-            // total control over focus — NTextInput's internal focus chain
-            // was fighting our keyboard navigation.
             Rectangle {
                 id: searchBar
                 width: parent.width
@@ -169,11 +161,9 @@ FocusScope {
 
                 TextInput {
                     id: searchField
-                    anchors {
-                        fill: parent
-                        leftMargin: Style.marginM
-                        rightMargin: Style.marginM
-                    }
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.marginM
+                    anchors.rightMargin: Style.marginM
                     verticalAlignment: TextInput.AlignVCenter
                     font.pointSize: Style.fontSizeM
                     color: Color.mOnSurface
@@ -187,9 +177,7 @@ FocusScope {
 
                     Keys.onPressed: function(event) {
                         if (event.key === Qt.Key_Down) {
-                            root.selectedIndex = Math.min(
-                                root.selectedIndex + 1,
-                                root.filteredItems.length - 1);
+                            root.selectedIndex = Math.min(root.selectedIndex + 1, root.filteredItems.length - 1);
                             root.scrollToSelected();
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Up) {
@@ -203,7 +191,6 @@ FocusScope {
                             if (root.main) root.main.endSession();
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                            // Tab cycles forward, Shift+Tab cycles backward
                             if (event.modifiers & Qt.ShiftModifier) {
                                 root.selectedIndex = root.selectedIndex <= 0
                                     ? root.filteredItems.length - 1
@@ -217,13 +204,11 @@ FocusScope {
                     }
                 }
 
-                // Placeholder text
+                // Placeholder
                 Text {
-                    anchors {
-                        fill: parent
-                        leftMargin: Style.marginM
-                        rightMargin: Style.marginM
-                    }
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.marginM
+                    anchors.rightMargin: Style.marginM
                     verticalAlignment: Text.AlignVCenter
                     font.pointSize: Style.fontSizeM
                     color: Color.mOnSurfaceVariant
@@ -243,100 +228,102 @@ FocusScope {
                 color: Color.mOnSurfaceVariant
             }
 
-            // ── Results ──
-            Flickable {
-                id: flickable
+            // ── Results area ──
+            Rectangle {
+                id: resultsArea
                 width: parent.width
                 height: parent.height - searchBar.height - Style.marginM * 2 - (root.filterText !== "" ? 20 : 0)
-                contentHeight: resultsColumn.height
+                radius: Style.radiusL
+                color: Color.mSurfaceVariant
                 clip: true
-                boundsBehavior: Flickable.StopAtBounds
 
-                Column {
-                    id: resultsColumn
-                    width: flickable.width
-                    spacing: 2
+                Flickable {
+                    id: flickable
+                    anchors.fill: parent
+                    anchors.margins: Style.marginS
+                    contentHeight: resultsColumn.height
+                    boundsBehavior: Flickable.StopAtBounds
 
-                    Repeater {
-                        model: root.filteredItems.length
+                    Column {
+                        id: resultsColumn
+                        width: flickable.width
+                        spacing: 2
 
-                        Rectangle {
-                            id: itemRect
-                            width: resultsColumn.width
-                            height: 48
-                            radius: Style.radiusM
+                        Repeater {
+                            model: root.filteredItems.length
 
-                            property int itemIndex: index
-                            property var itemData: root.filteredItems[index] || {}
-                            property bool isSelected: index === root.selectedIndex
+                            Rectangle {
+                                id: itemRect
+                                width: resultsColumn.width
+                                height: 48
+                                radius: Style.radiusM
+                                property int itemIndex: index
+                                property var itemData: root.filteredItems[index] || {}
+                                property bool isSelected: index === root.selectedIndex
 
-                            color: {
-                                if (isSelected) return Color.mPrimary;
-                                if (itemMouse.containsMouse)
-                                    return Qt.lighter(Color.mSurfaceVariant, 1.15);
-                                return Color.mSurface;
-                            }
+                                color: isSelected ? Color.mPrimary
+                                    : itemMouse.containsMouse ? Qt.lighter(Color.mSurfaceVariant, 1.15)
+                                    : Color.mSurface
 
-                            Row {
-                                anchors.fill: parent
-                                anchors.leftMargin: Style.marginM
-                                anchors.rightMargin: Style.marginM
-                                spacing: Style.marginM
+                                Row {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Style.marginM
+                                    anchors.rightMargin: Style.marginM
+                                    spacing: Style.marginM
 
-                                Item {
-                                    width: 24
-                                    height: parent.height
-                                    visible: (itemRect.itemData.icon || "") !== ""
-                                    NIcon {
-                                        anchors.centerIn: parent
-                                        icon: itemRect.itemData.icon || ""
-                                        color: itemRect.isSelected
-                                            ? Color.mOnPrimary : Color.mOnSurface
+                                    Item {
+                                        width: 24
+                                        height: parent.height
+                                        visible: (itemRect.itemData.icon || "") !== ""
+                                        NIcon {
+                                            anchors.centerIn: parent
+                                            icon: itemRect.itemData.icon || ""
+                                            color: itemRect.isSelected ? Color.mOnPrimary : Color.mOnSurface
+                                        }
+                                    }
+
+                                    Column {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - Style.marginM * 2 - (itemRect.itemData.icon ? 36 : 0)
+                                        spacing: 2
+
+                                        Text {
+                                            width: parent.width
+                                            text: itemRect.itemData.name || ""
+                                            font.pointSize: Style.fontSizeM
+                                            font.weight: Font.Medium
+                                            color: itemRect.isSelected ? Color.mOnPrimary : Color.mOnSurface
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            width: parent.width
+                                            visible: (itemRect.itemData.description || "") !== ""
+                                            text: itemRect.itemData.description || ""
+                                            font.pointSize: Style.fontSizeS
+                                            color: itemRect.isSelected ? Color.mOnPrimary : Color.mOnSurfaceVariant
+                                            elide: Text.ElideRight
+                                        }
                                     }
                                 }
 
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - Style.marginM * 2 - (itemRect.itemData.icon ? 36 : 0)
-                                    spacing: 2
-
-                                    Text {
-                                        width: parent.width
-                                        text: itemRect.itemData.name || ""
-                                        font.pointSize: Style.fontSizeM
-                                        font.weight: Font.Medium
-                                        color: itemRect.isSelected
-                                            ? Color.mOnPrimary : Color.mOnSurface
-                                        elide: Text.ElideRight
+                                MouseArea {
+                                    id: itemMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.selectedIndex = itemIndex;
+                                        root.activateItem(itemIndex);
                                     }
-
-                                    Text {
-                                        width: parent.width
-                                        visible: (itemRect.itemData.description || "") !== ""
-                                        text: itemRect.itemData.description || ""
-                                        font.pointSize: Style.fontSizeS
-                                        color: itemRect.isSelected
-                                            ? Color.mOnPrimary : Color.mOnSurfaceVariant
-                                        elide: Text.ElideRight
-                                    }
+                                    onEntered: root.selectedIndex = itemIndex
                                 }
-                            }
-
-                            MouseArea {
-                                id: itemMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.selectedIndex = itemIndex;
-                                    root.activateItem(itemIndex);
-                                }
-                                onEntered: root.selectedIndex = itemIndex
                             }
                         }
                     }
                 }
 
+                // Empty state — centered in resultsArea, not in Flickable
                 Text {
                     anchors.centerIn: parent
                     visible: root.filteredItems.length === 0

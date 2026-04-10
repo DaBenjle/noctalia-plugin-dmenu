@@ -48,20 +48,31 @@ Item {
         }
     }
 
-    // Smart open: if we recently closed the launcher, defer the open.
-    // Otherwise open immediately.
+    // Set by beginSession when it replaced an active session — tells
+    // openPanelSmart to skip the openPanel call since the panel is still visible.
+    property bool panelAlreadyOpen: false
+
+    // Smart open: skip if panel is already showing (rapid replacement),
+    // defer if we recently closed (chaining), otherwise open immediately.
     function openPanelSmart() {
         if (!pluginApi) return;
+
+        // If we just replaced a session (panel is still open), don't reopen.
+        // The Panel refreshes items via onItemsChanged.
+        if (panelAlreadyOpen) {
+            panelAlreadyOpen = false;
+            Logger.d("DmenuProvider", "Panel already open, skipping openPanel");
+            return;
+        }
+
         var now = Date.now();
         var elapsed = now - lastCloseTimestamp;
 
         if (elapsed < chainDelay) {
-            // We just closed — defer to let animation finish
             launcherOpenTimer.interval = chainDelay - elapsed + 50;
             launcherOpenTimer.restart();
-            Logger.d("DmenuProvider", "Deferring launcher open by " + launcherOpenTimer.interval + "ms");
+            Logger.d("DmenuProvider", "Deferring panel open by " + launcherOpenTimer.interval + "ms");
         } else {
-            // No recent close — open immediately
             pluginApi.withCurrentScreen(function(screen) {
                 pluginApi.openPanel(screen);
             });
@@ -76,10 +87,13 @@ Item {
     function beginSession(config) {
         if (state.active) {
             var oldSid = state.sessionId;
+            panelAlreadyOpen = true;  // panel is still showing
             replacingSession = true;
             state.active = false;
             sessionEnded(oldSid);
             replacingSession = false;
+        } else {
+            panelAlreadyOpen = false;
         }
 
         state.sessionId++;
