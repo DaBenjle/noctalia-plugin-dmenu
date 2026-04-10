@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+#
+# noctalia-dmenu — A rofi-dmenu compatible wrapper for the noctalia-dmenu plugin.
+#
+# Usage:
+#   echo -e "option1\noption2\noption3" | noctalia-dmenu [OPTIONS]
+#   noctalia-dmenu [OPTIONS] <<< "option1\noption2"
+#   noctalia-dmenu -f /path/to/items.txt [OPTIONS]
+#
+# Options:
+#   -p,  --prompt TEXT        Prompt text displayed above items
+#   -cb, --callback CMD       Command to run on selection ({} is replaced by the result)
+#   -c,  --custom             Allow custom input (text not in the item list)
+#   -s,  --separator SEP      Item separator (default: newline)
+#   -t,  --timeout SECS       Timeout in seconds (default: 30, 0 = no timeout)
+#   -r,  --result-file PATH   Override result file path
+#   -f,  --file PATH          Read items from file instead of stdin
+#   -j,  --json CONFIG        Pass a full JSON config string directly
+#   -F,  --format FMT         Result format: plain (default), json, index
+#   -no-close                 Keep launcher open after selection
+#   -h,  --help               Show this help
+#
+# Exit codes:
+#   0  Selection made
+#   1  Timeout or cancelled (no selection)
+#   2  Error (bad args, IPC failure, etc.)
+#
+# Chaining example:
+#   CHOICE=$(echo -e "Power Off\nReboot\nSuspend" | noctalia-dmenu -p "Power:")
+#   case "$CHOICE" in
+#     "Power Off") systemctl poweroff ;;
+#     "Reboot")    systemctl reboot ;;
+#     "Suspend")   systemctl suspend ;;
+#   esac
+#
+# Advanced chaining (nested menus via callback):
+#   qs -c noctalia-shell ipc call plugin:dmenu show \
+#     '{"items":["Level 1A","Level 1B"],"prompt":"Pick:","callbackCmd":"my-submenu.sh {}"}'
+#
+
+set -euo pipefail
+
+# ── Defaults ──
+PROMPT=""
+CALLBACK=""
+ALLOW_CUSTOM=false
+SEPARATOR=$'\n'
+TIMEOUT=30
+RESULT_FILE="/tmp/noctalia-dmenu-result"
+ITEMS_FILE=""
+JSON_CONFIG=""
+RESULT_FORMAT="plain"
+CLOSE_ON_SELECT=true
+QS_CMD="qs"
+QS_CONFIG="noctalia-shell"
+
+# ── Parse arguments ──
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -p|--prompt)
+            PROMPT="$2"; shift 2 ;;
+        -cb|--callback)
+            CALLBACK="$2"; shift 2 ;;
+        -c|--custom)
+            ALLOW_CUSTOM=true; shift ;;
+        -s|--separator)
+            SEPARATOR="$2"; shift 2 ;;
+        -t|--timeout)
+            TIMEOUT="$2"; shift 2 ;;
+        -r|--result-file)
+            RESULT_FILE="$2"; shift 2 ;;
+        -f|--file)
+            ITEMS_FILE="$2"; shift 2 ;;
+        -j|--json)
+            JSON_CONFIG="$2"; shift 2 ;;
+        -F|--format)
+            RESULT_FORMAT="$2"; shift 2 ;;
+        -no-close)
+            CLOSE_ON_SELECT=false; shift ;;
+        -h|--help)
+            sed -n '2,/^$/{ s/^# \?//; p }' "$0"
+            exit 0 ;;
+        *)
+            echo "noctalia-dmenu: unknown option: $1" >&2
+            exit 2 ;;
+    esac
+done
+
+# ── Ensure clean state ──
+# Remove stale result file so we don't read an old selection
+rm -f "$RESULT_FILE" "${RESULT_FILE}.tmp"
+
+# ── Determine IPC method ──
+if [[ -n "$JSON_CONFIG" ]]; then
+    # Direct JSON mode — use showJson (two-arg) to work around
+    # Quickshell CLI single-arg parsing issue
+    "$QS_CMD" -c "$QS_CONFIG" ipc call plugin:dmenu showJson "$JSON_CONFIG" x
+elif [[ -n "$ITEMS_FILE" ]]; then
+    # File mode — let the plugin read the file directly
+    "$QS_CMD" -c "$QS_CONFIG" ipc call plugin:dmenu showFromFile \
+        "$ITEMS_FILE" "$SEPARATOR" "$PROMPT" "$CALLBACK"
+    # In file+callback mode, the plugin handles everything — we still wait
+    # for the result file below so the script can use the exit code.
+else
+    # Stdin mode — read items, build JSON config, send via IPC
+    if [[ -t 0 ]]; then
+        echo "noctalia-dmenu: no input. Pipe items via stdin, use -f, or -j." >&2
+        exit 2
+    fi
+
+    # Read all stdin
+    INPUT=$(cat)
+
+    if [[ -z "$INPUT" ]]; then
+        echo "noctalia-dmenu: empty input" >&2
+        exit 2
+    fi
+
+    # Build JSON items array from the flat input.
+    # We use a temp file + simple line-by-line JSON construction to avoid
+    # needing jq as a dependency. Each line becomes {"name":"...","value":"..."}.
+    ITEMS_JSON="["
+    FIRST=true
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" ]] && continue
+        # Escape JSON special characters
+        escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
+        if [[ "$FIRST" == true ]]; then
+            FIRST=false
+        else
+            ITEMS_JSON+=","
+        fi
+        ITEMS_JSON+="{\"name\":\"${escaped}\",\"value\":\"${escaped}\"}"
+    done <<< "$INPUT"
+    ITEMS_JSON+="]"
+
+    # Build the full config object
+    CONFIG="{"
+    CONFIG+="\"items\":${ITEMS_JSON}"
+    CONFIG+=",\"resultFile\":\"${RESULT_FILE}\""
+    CONFIG+=",\"resultFormat\":\"${RESULT_FORMAT}\""
+
+    [[ -n "$PROMPT" ]] && CONFIG+=",\"prompt\":\"${PROMPT}\""
+    [[ -n "$CALLBACK" ]] && CONFIG+=",\"callbackCmd\":\"$(printf '%s' "$CALLBACK" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+    [[ "$ALLOW_CUSTOM" == true ]] && CONFIG+=",\"allowCustomInput\":true"
+    [[ "$CLOSE_ON_SELECT" == false ]] && CONFIG+=",\"closeOnSelect\":false"
+
+    CONFIG+="}"
+
+    "$QS_CMD" -c "$QS_CONFIG" ipc call plugin:dmenu showJson "$CONFIG" x
+fi
+
+# ── Wait for result ──
+# The plugin writes the result file atomically (tmp + mv).
+# We prefer inotifywait for instant response, falling back to polling.
+
+wait_for_result() {
+    local timeout="$1"
+    local file="$2"
+
+    if command -v inotifywait &>/dev/null; then
+        # inotifywait: watch for the result file to appear via moved_to
+        # (the plugin does: write tmp → mv tmp result)
+        local dir
+        dir=$(dirname "$file")
+        local base
+        base=$(basename "$file")
+
+        if [[ "$timeout" -gt 0 ]]; then
+            inotifywait -qq -t "$timeout" -e moved_to "$dir" --include "^${base}$" 2>/dev/null
+        else
+            inotifywait -qq -e moved_to "$dir" --include "^${base}$" 2>/dev/null
+        fi
+        return $?
+    else
+        # Polling fallback (100ms intervals)
+        local elapsed=0
+        local interval_ms=100
+        local timeout_ms=$((timeout * 1000))
+
+        while true; do
+            if [[ -f "$file" ]]; then
+                return 0
+            fi
+
+            if [[ "$timeout" -gt 0 && "$elapsed" -ge "$timeout_ms" ]]; then
+                return 2  # timeout
+            fi
+
+            sleep 0.1
+            elapsed=$((elapsed + interval_ms))
+        done
+    fi
+}
+
+# If a callback was provided AND we're in stdin mode, the plugin itself
+# will execute the callback. We still wait so the caller gets the exit code
+# and can read the result.
+
+if wait_for_result "$TIMEOUT" "$RESULT_FILE"; then
+    if [[ -f "$RESULT_FILE" ]]; then
+        cat "$RESULT_FILE"
+        rm -f "$RESULT_FILE"
+        exit 0
+    fi
+fi
+
+# Timeout or cancelled
+rm -f "$RESULT_FILE" "${RESULT_FILE}.tmp"
+exit 1

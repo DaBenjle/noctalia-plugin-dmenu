@@ -1,0 +1,28 @@
+{
+  "provider": {
+    "name": "Dmenu",
+    "command": "External menu (dmenu mode)",
+    "noSession": "No active dmenu session",
+    "noSessionDesc": "Use IPC or noctalia-dmenu script to send items",
+    "customInput": "Use as custom input",
+    "selected": "Selected: {value}"
+  },
+  "settings": {
+    "resultFile": "Result file path",
+    "resultFileDesc": "Where selections are written. Scripts read this file after the menu closes.",
+    "resultFormat": "Result format",
+    "resultFormatDesc": "How the selection is written to the result file",
+    "allowCustom": "Allow custom input",
+    "allowCustomDesc": "Let users type and submit text that isn't in the item list",
+    "customPrefix": "Custom input prefix",
+    "customPrefixDesc": "Prefix added to custom input values",
+    "closeOnSelect": "Close launcher on select",
+    "closeOnSelectDesc": "Automatically close the launcher when an item is selected",
+    "showToast": "Show toast on select",
+    "showToastDesc": "Display a notification when an item is selected",
+    "separator": "Default separator",
+    "separatorDesc": "Separator for simple mode",
+    "maxResults": "Max results",
+    "maxResultsDesc": "Maximum number of items to display: {count}"
+  }
+}
