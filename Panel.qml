@@ -257,7 +257,7 @@ FocusScope {
             NText {
                 visible: {
                     var st = root.dmenuState;
-                    return st && st.allowCustomInput && root.filterText === "";
+                    return st && st.allowCustomInput;
                 }
                 Layout.fillWidth: true
                 Layout.leftMargin: Style.marginL
