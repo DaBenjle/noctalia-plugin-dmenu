@@ -41,16 +41,16 @@ ColumnLayout {
 
     // Position options
     readonly property var positionOptions: [
-        { key: "follow_launcher", name: "Follow launcher" },
-        { key: "center",          name: "Center" },
-        { key: "top_center",      name: "Top center" },
-        { key: "bottom_center",   name: "Bottom center" },
-        { key: "top_left",        name: "Top left" },
-        { key: "top_right",       name: "Top right" },
-        { key: "bottom_left",     name: "Bottom left" },
-        { key: "bottom_right",    name: "Bottom right" },
-        { key: "center_left",     name: "Center left" },
-        { key: "center_right",    name: "Center right" }
+        { key: "follow_launcher", name: root.pluginApi?.tr("settings.positionFollowLauncher") },
+        { key: "center",          name: root.pluginApi?.tr("settings.positionCenter") },
+        { key: "top_center",      name: root.pluginApi?.tr("settings.positionTopCenter") },
+        { key: "bottom_center",   name: root.pluginApi?.tr("settings.positionBottomCenter") },
+        { key: "top_left",        name: root.pluginApi?.tr("settings.positionTopLeft") },
+        { key: "top_right",       name: root.pluginApi?.tr("settings.positionTopRight") },
+        { key: "bottom_left",     name: root.pluginApi?.tr("settings.positionBottomLeft") },
+        { key: "bottom_right",    name: root.pluginApi?.tr("settings.positionBottomRight") },
+        { key: "center_left",     name: root.pluginApi?.tr("settings.positionCenterLeft") },
+        { key: "center_right",    name: root.pluginApi?.tr("settings.positionCenterRight") }
     ]
 
     spacing: Style.marginM
@@ -60,8 +60,8 @@ ColumnLayout {
     // ═══════════════════════════════════════
 
     NComboBox {
-        label: "Panel position"
-        description: "Where the dmenu panel appears on screen"
+        label: root.pluginApi?.tr("settings.panelPosition")
+        description: root.pluginApi?.tr("settings.panelPositionDesc")
         Layout.fillWidth: true
         model: root.positionOptions
         currentKey: root.editPanelPosition
@@ -81,29 +81,29 @@ ColumnLayout {
     // ═══════════════════════════════════════
 
     NLabel {
-        label: "Display"
+        label: root.pluginApi?.tr("settings.display")
     }
 
     NToggle {
         Layout.fillWidth: true
-        label: "Show match count"
-        description: "Show filtered/total count in footer while searching"
+        label: root.pluginApi?.tr("settings.showMatchCount")
+        description: root.pluginApi?.tr("settings.showMatchCountDesc")
         checked: root.editShowMatchCount
         onToggled: function(v) { root.editShowMatchCount = v }
     }
 
     NToggle {
         Layout.fillWidth: true
-        label: "Show footer"
-        description: "Show the result count bar below the list"
+        label: root.pluginApi?.tr("settings.showFooter")
+        description: root.pluginApi?.tr("settings.showFooterDesc")
         checked: root.editShowFooter
         onToggled: function(v) { root.editShowFooter = v }
     }
 
     NToggle {
         Layout.fillWidth: true
-        label: "Show toast on select"
-        description: "Brief notification when an item is selected"
+        label: root.pluginApi?.tr("settings.showToast")
+        description: root.pluginApi?.tr("settings.showToastDesc")
         checked: root.editShowToast
         onToggled: function(v) { root.editShowToast = v }
     }
@@ -119,13 +119,13 @@ ColumnLayout {
     // ═══════════════════════════════════════
 
     NLabel {
-        label: "Advanced"
+        label: root.pluginApi?.tr("settings.advanced")
     }
 
     NTextInput {
         Layout.fillWidth: true
-        label: "Result file path"
-        description: "Where selections are written for scripts to read"
+        label: root.pluginApi?.tr("settings.resultFile")
+        description: root.pluginApi?.tr("settings.resultFileDesc")
         placeholderText: "/tmp/noctalia-dmenu-result"
         text: root.editResultFile
         onTextChanged: root.editResultFile = text
@@ -136,8 +136,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: "Max results: " + root.editMaxResults
-            description: "Cap on displayed items"
+            label: root.pluginApi?.tr("settings.maxResults") + ": " + root.editMaxResults
+            description: root.pluginApi?.tr("settings.maxResultsDesc", { count: root.editMaxResults })
         }
 
         NSlider {

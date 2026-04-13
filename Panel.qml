@@ -103,7 +103,7 @@ FocusScope {
             });
             if (!hasExact) {
                 results.push({
-                    name: query, description: "Use as custom input",
+                    name: query, description: root.pluginApi?.tr("provider.customInput"),
                     value: query, icon: "text-plus",
                     originalIndex: -1, isCustomInput: true
                 });
@@ -262,7 +262,7 @@ FocusScope {
                 Layout.fillWidth: true
                 Layout.leftMargin: Style.marginL
                 Layout.rightMargin: Style.marginL
-                text: "✎  Custom input allowed — type anything and press Enter"
+                text: root.pluginApi?.tr("provider.customInputHint")
                 pointSize: Style.fontSizeXS
                 color: Color.mPrimary
             }

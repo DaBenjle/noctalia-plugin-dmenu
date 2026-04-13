@@ -283,7 +283,9 @@ Item {
 
         // Step 4: Toast
         if (showToast) {
-            ToastService.showNotice("Selected: " + value);
+            ToastService.showNotice(
+                pluginApi?.tr("provider.selected", { value: value })
+            );
         }
 
         // Step 5: Fire callback immediately
