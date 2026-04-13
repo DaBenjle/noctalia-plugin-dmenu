@@ -344,7 +344,7 @@ FocusScope {
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - Style.marginM * 2 - ((itemRect.itemData.icon || itemRect.itemData.image) ? 44 : 0)
-                                        spacing: 2
+                                        spacing: Style.marginXS
 
                                         Text {
                                             width: parent.width
