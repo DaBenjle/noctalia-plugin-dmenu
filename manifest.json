@@ -1,12 +1,12 @@
 {
   "id": "dmenu",
   "name": "Dmenu Provider",
-  "version": "2.1.0",
+  "version": "1.0.0",
   "minNoctaliaVersion": "3.9.0",
   "author": "github.com/DaBenjle",
   "license": "MIT",
   "repository": "https://github.com/DaBenjle/noctalia-plugin-dmenu",
-  "description": "A rofi-dmenu replacement that lets external scripts present arbitrary choices through a Noctalia panel.",
+  "description": "An IPC-driven dmenu replacement that lets external scripts present choices through a Noctalia panel.",
   "tags": ["Panel", "Productivity", "System"],
   "entryPoints": {
     "main": "Main.qml",
@@ -19,11 +19,7 @@
   "metadata": {
     "defaultSettings": {
       "resultFile": "/tmp/noctalia-dmenu-result",
-      "defaultSeparator": "\n",
-      "allowCustomInput": false,
       "showToastOnSelect": false,
-      "closeOnSelect": true,
-      "customInputPrefix": "",
       "maxResults": 200,
       "panelPosition": "follow_launcher",
       "showMatchCount": true,

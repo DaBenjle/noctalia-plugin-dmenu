@@ -151,17 +151,9 @@ Item {
             || defaults.resultFile
             || manifest.resultFile
             || "/tmp/noctalia-dmenu-result";
-        // resultFormat is per-invocation only, never read from saved settings.
-        // This ensures scripts behave consistently across systems.
         cfg.resultFormat = overrides.resultFormat || "plain";
-        cfg.allowCustomInput = overrides.allowCustomInput !== undefined
-            ? overrides.allowCustomInput
-            : (defaults.allowCustomInput !== undefined
-                ? defaults.allowCustomInput : false);
-        cfg.closeOnSelect = overrides.closeOnSelect !== undefined
-            ? overrides.closeOnSelect
-            : (defaults.closeOnSelect !== undefined
-                ? defaults.closeOnSelect : true);
+        cfg.allowCustomInput = overrides.allowCustomInput === true ? true : false;
+        cfg.closeOnSelect = overrides.closeOnSelect === false ? false : true;
         cfg.maxResults = overrides.maxResults
             || defaults.maxResults
             || manifest.maxResults

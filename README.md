@@ -1,6 +1,10 @@
 # noctalia-dmenu
 
-A dmenu/rofi replacement for [Noctalia Shell](https://github.com/noctalia-dev/noctalia-shell). Present choices through a Noctalia panel and get the selection back in your scripts.
+A dmenu replacement plugin for [Noctalia Shell](https://github.com/noctalia-dev/noctalia-shell). Scripts send items over IPC, the user picks one through a native Noctalia panel, and the result comes back via a file or callback.
+
+## How it works
+
+Everything is driven by Noctalia's IPC system. A script calls `showItems` or `showJson` to open the panel with a list of choices. When the user selects one, the plugin writes the result to a file and optionally runs a callback command. The included `noctalia-dmenu` helper script wraps this into a familiar pipe interface — under the hood it sends the IPC call, waits for the result file, and prints the selection to stdout.
 
 ## Install
 
@@ -17,7 +21,7 @@ Add to `~/.config/noctalia/plugins.json`:
 
 Restart Noctalia, enable in Settings → Plugins.
 
-For pipe-style usage, put the helper on your PATH:
+For pipe-style usage:
 
 ```bash
 ln -s ~/.config/noctalia/plugins/dmenu/noctalia-dmenu ~/.local/bin/noctalia-dmenu
@@ -25,97 +29,85 @@ ln -s ~/.config/noctalia/plugins/dmenu/noctalia-dmenu ~/.local/bin/noctalia-dmen
 
 ## API
 
-### `showItems` — plain text items
+All commands go through `noctalia-shell ipc call plugin:dmenu <method> [args]`.
 
-For simple lists. Two arguments: items string and options JSON.
+### `showItems` — plain text
+
+Two args: delimiter-separated items and a JSON options object.
 
 ```bash
-# Basic
-noctalia-shell ipc call plugin:dmenu showItems "a|b|c" '{"separator":"|"}'
+noctalia-shell ipc call plugin:dmenu showItems "a|b|c" '{"separator":"|","prompt":"Pick:"}'
 
-# With prompt
-noctalia-shell ipc call plugin:dmenu showItems "yes|no" '{"separator":"|","prompt":"Continue?"}'
-
-# With callback
-noctalia-shell ipc call plugin:dmenu showItems "Firefox|Chromium" '{"separator":"|","callbackCmd":"gtk-launch {}"}'
-
-# Default newline separator
-noctalia-shell ipc call plugin:dmenu showItems "one
-two
-three" '{"prompt":"Pick:"}'
+noctalia-shell ipc call plugin:dmenu showItems "yes|no" '{"separator":"|","callbackCmd":"echo {}"}'
 ```
 
 ### `showJson` — structured items
 
-For items with descriptions, icons, or images. Single argument: a JSON object with `items` array and options.
+Single arg: a JSON object containing an `items` array and any options.
 
 ```bash
-# Simple strings
-noctalia-shell ipc call plugin:dmenu showJson '{"items":["alpha","beta","gamma"],"prompt":"Greek:"}'
+# Strings
+noctalia-shell ipc call plugin:dmenu showJson \
+    '{"items":["alpha","beta","gamma"],"prompt":"Greek:"}'
 
 # Objects with descriptions and icons
-noctalia-shell ipc call plugin:dmenu showJson '{"items":[{"name":"Firefox","value":"firefox","description":"Web browser","icon":"browser"},{"name":"Zen","value":"zen","description":"Privacy focused","icon":"shield"}],"prompt":"Launch:"}'
-
-# Mixed strings and objects
-noctalia-shell ipc call plugin:dmenu showJson '{"items":["plain",{"name":"Rich","value":"rich","icon":"star","description":"Has metadata"}]}'
+noctalia-shell ipc call plugin:dmenu showJson \
+    '{"items":[{"name":"Firefox","value":"firefox","description":"Web browser","icon":"browser"},{"name":"Zen","value":"zen","icon":"shield"}],"prompt":"Launch:"}'
 
 # With images
-noctalia-shell ipc call plugin:dmenu showJson '{"items":[{"name":"Photo","value":"photo1","image":"/home/user/photo.jpg"}]}'
+noctalia-shell ipc call plugin:dmenu showJson \
+    '{"items":[{"name":"Photo","value":"p1","image":"/home/user/photo.jpg"}]}'
 
 # With callback
-noctalia-shell ipc call plugin:dmenu showJson '{"items":["a","b","c"],"callbackCmd":"echo {}"}'
+noctalia-shell ipc call plugin:dmenu showJson \
+    '{"items":["a","b","c"],"callbackCmd":"echo {}"}'
 ```
 
 ### `showFromFile` — items from a file
 
-For large lists or pre-built JSON files. Two arguments: file path and options JSON.
-
-The file format is auto-detected: JSON array (`[...]`), JSON config object (`{...}` with `items` key), or plain text (one item per line).
+Two args: file path and a JSON options object. Auto-detects JSON arrays, JSON config objects, or plain text.
 
 ```bash
-# Plain text file
-noctalia-shell ipc call plugin:dmenu showFromFile /tmp/items.txt '{"prompt":"Select:"}'
-
-# JSON array file
 noctalia-shell ipc call plugin:dmenu showFromFile /tmp/items.json '{"prompt":"Pick:"}'
+noctalia-shell ipc call plugin:dmenu showFromFile /tmp/items.txt '{"separator":"|"}'
 ```
 
-### Item object fields
+### Item fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Display text (required for objects) |
+| `name` | string | Display text |
 | `value` | string | Return value (defaults to `name`) |
-| `description` | string | Subtitle text |
+| `description` | string | Subtitle |
 | `icon` | string | [Tabler icon](https://tabler.io/icons) name |
-| `image` | string | Absolute path to an image file (overrides `icon`) |
+| `image` | string | Absolute path to image (overrides `icon`) |
 
 ### Options
 
-All options are optional. For `showItems` and `showFromFile`, pass as the second argument. For `showJson`, include in the same object.
+For `showItems` / `showFromFile`, pass as second arg. For `showJson`, include in the same object.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `separator` | string | `"\n"` | Delimiter for `showItems` / `showFromFile` text mode |
-| `prompt` | string | `""` | Placeholder text in search bar |
-| `callbackCmd` | string | `""` | Command on selection. `{}` = value, `{index}` = index, `{name}` = name |
-| `resultFile` | string | `/tmp/noctalia-dmenu-result` | Where to write the selection |
+| `separator` | string | `"\n"` | Item delimiter (`showItems` / `showFromFile` text mode) |
+| `prompt` | string | `""` | Search bar placeholder |
+| `callbackCmd` | string | `""` | Run on selection. `{}` = value, `{index}` = index, `{name}` = name |
+| `resultFile` | string | `/tmp/noctalia-dmenu-result` | Where to write the result |
 | `resultFormat` | string | `"plain"` | `"plain"`, `"json"`, or `"index"` |
 | `allowCustomInput` | bool | `false` | Allow typing values not in the list |
-| `closeOnSelect` | bool | `true` | Close panel after selection |
-| `maxResults` | int | `200` | Maximum items to display |
+| `closeOnSelect` | bool | `true` | Close after selection |
+| `maxResults` | int | `200` | Max displayed items |
 
 ### Other commands
 
-| Command | Args | Description |
-|---------|------|-------------|
-| `toggle` | — | Toggle the panel |
-| `close` | — | Cancel and close |
-| `clear` | — | Reset state without closing |
+| Command | Description |
+|---------|-------------|
+| `toggle` | Toggle panel open/closed |
+| `close` | Cancel and close |
+| `clear` | Reset state |
 
 ## Helper script
 
-Pipe-friendly interface, like `rofi -dmenu`.
+The `noctalia-dmenu` script provides a pipe interface. It calls `showItems` over IPC, waits for the result file, and prints the selection to stdout.
 
 ```bash
 echo -e "Power Off\nReboot\nSuspend" | noctalia-dmenu -p "Power:"
@@ -132,18 +124,20 @@ echo -e "Firefox\nChromium" | noctalia-dmenu -cb "gtk-launch {}"
 | Flag | Description |
 |------|-------------|
 | `-p`, `--prompt` | Search bar placeholder |
-| `-cb`, `--callback` | Command on selection (`{}` = result) |
-| `-c`, `--custom` | Allow custom text input |
-| `-s`, `--separator` | Item separator (default: newline) |
-| `-t`, `--timeout` | Wait timeout in seconds (default: 30) |
-| `-r`, `--result-file` | Override result file path |
-| `-f`, `--file` | Read items from file |
-| `-F`, `--format` | Result format: plain, json, index |
-| `-no-close` | Keep panel open after selection |
+| `-cb`, `--callback` | Command on selection |
+| `-c`, `--custom` | Allow custom input |
+| `-s`, `--separator` | Delimiter (default: newline) |
+| `-t`, `--timeout` | Wait timeout (default: 30s) |
+| `-r`, `--result-file` | Override result path |
+| `-f`, `--file` | Read from file |
+| `-F`, `--format` | Output: plain, json, index |
+| `-no-close` | Keep panel open |
 
-Exit codes: `0` selected, `1` timeout/cancelled, `2` error.
+Exit: `0` selected, `1` timeout/cancelled, `2` error.
 
 ## Chaining
+
+Menus chain naturally — each callback can open a new menu.
 
 ```bash
 #!/usr/bin/env bash
@@ -165,22 +159,18 @@ Settings → Plugins → Dmenu Provider → Configure.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Panel position | `follow_launcher` | `follow_launcher`, `center`, `top_center`, `bottom_center`, `top_left`, `top_right`, `bottom_left`, `bottom_right` |
-| Show match count | `true` | Filtered/total in footer |
-| Show footer | `true` | Result count footer |
-| Allow custom input | `false` | Default for custom input |
-| Custom input prefix | — | Prefix for custom values |
-| Close on select | `true` | Auto-close on selection |
-| Show toast | `false` | Notification on selection |
-| Result file | `/tmp/noctalia-dmenu-result` | Default result path |
-| Default separator | `\n` | Default for showItems |
-| Max results | `200` | Display cap |
+| Panel position | Follow launcher | Where the panel appears |
+| Show match count | On | Filtered/total in footer |
+| Show footer | On | Result count bar |
+| Show toast | Off | Notification on selection |
+| Result file | `/tmp/noctalia-dmenu-result` | Default path |
+| Max results | 200 | Display cap |
 
 ## Testing
 
 ```bash
 ./test-dmenu.sh       # all 20 tests
-./test-dmenu.sh 4     # just one test
+./test-dmenu.sh 4     # single test
 ```
 
 ## License

@@ -8,43 +8,22 @@ ColumnLayout {
 
     property var pluginApi: null
 
-    // ── Local edit state ──
+    // ── Edit state ──
     property string editResultFile:
         pluginApi?.pluginSettings?.resultFile
         || pluginApi?.manifest?.metadata?.defaultSettings?.resultFile
         || "/tmp/noctalia-dmenu-result"
-
-    property string editSeparator:
-        pluginApi?.pluginSettings?.defaultSeparator
-        || pluginApi?.manifest?.metadata?.defaultSettings?.defaultSeparator
-        || "\n"
-
-    property bool editAllowCustom:
-        pluginApi?.pluginSettings?.allowCustomInput
-        ?? pluginApi?.manifest?.metadata?.defaultSettings?.allowCustomInput
-        ?? false
 
     property bool editShowToast:
         pluginApi?.pluginSettings?.showToastOnSelect
         ?? pluginApi?.manifest?.metadata?.defaultSettings?.showToastOnSelect
         ?? false
 
-    property bool editCloseOnSelect:
-        pluginApi?.pluginSettings?.closeOnSelect
-        ?? pluginApi?.manifest?.metadata?.defaultSettings?.closeOnSelect
-        ?? true
-
-    property string editCustomInputPrefix:
-        pluginApi?.pluginSettings?.customInputPrefix
-        || pluginApi?.manifest?.metadata?.defaultSettings?.customInputPrefix
-        || ""
-
     property int editMaxResults:
         pluginApi?.pluginSettings?.maxResults
         || pluginApi?.manifest?.metadata?.defaultSettings?.maxResults
         || 200
 
-    // ── Position settings ──
     property string editPanelPosition:
         pluginApi?.pluginSettings?.panelPosition
         || pluginApi?.manifest?.metadata?.defaultSettings?.panelPosition
@@ -60,39 +39,67 @@ ColumnLayout {
         ?? pluginApi?.manifest?.metadata?.defaultSettings?.showFooter
         ?? true
 
+    // Position options
+    readonly property var positionOptions: [
+        { value: "follow_launcher", label: "Follow launcher" },
+        { value: "center",         label: "Center" },
+        { value: "top_center",     label: "Top center" },
+        { value: "bottom_center",  label: "Bottom center" },
+        { value: "top_left",       label: "Top left" },
+        { value: "top_right",      label: "Top right" },
+        { value: "bottom_left",    label: "Bottom left" },
+        { value: "bottom_right",   label: "Bottom right" },
+        { value: "center_left",    label: "Center left" },
+        { value: "center_right",   label: "Center right" }
+    ]
+
     spacing: Style.marginM
 
     // ═══════════════════════════════════════
-    // Panel appearance
+    // Panel position
     // ═══════════════════════════════════════
 
     NLabel {
-        label: "Panel appearance"
-    }
-
-    NTextInput {
-        Layout.fillWidth: true
         label: "Panel position"
-        description: "follow_launcher, center, top_center, bottom_center, top_left, top_right, bottom_left, bottom_right, center_left, center_right"
-        placeholderText: "follow_launcher"
-        text: root.editPanelPosition
-        onTextChanged: root.editPanelPosition = text
+        description: "Where the dmenu panel appears on screen"
     }
 
-    NToggle {
+    Flow {
         Layout.fillWidth: true
-        label: "Show match count"
-        description: "Display the number of matching items while filtering"
-        checked: root.editShowMatchCount
-        onToggled: function(v) { root.editShowMatchCount = v }
-    }
+        spacing: Style.marginS
 
-    NToggle {
-        Layout.fillWidth: true
-        label: "Show footer"
-        description: "Display the result count footer below the list"
-        checked: root.editShowFooter
-        onToggled: function(v) { root.editShowFooter = v }
+        Repeater {
+            model: root.positionOptions
+
+            Rectangle {
+                width: chipText.implicitWidth + Style.marginL * 2
+                height: 32
+                radius: 16
+                color: root.editPanelPosition === modelData.value
+                    ? Color.mPrimary
+                    : Color.mSurfaceVariant
+                border.width: 1
+                border.color: root.editPanelPosition === modelData.value
+                    ? Color.mPrimary
+                    : Color.mOutline
+
+                Text {
+                    id: chipText
+                    anchors.centerIn: parent
+                    text: modelData.label
+                    font.pointSize: Style.fontSizeS
+                    color: root.editPanelPosition === modelData.value
+                        ? Color.mOnPrimary
+                        : Color.mOnSurfaceVariant
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.editPanelPosition = modelData.value
+                }
+            }
+        }
     }
 
     NDivider {
@@ -102,43 +109,33 @@ ColumnLayout {
     }
 
     // ═══════════════════════════════════════
-    // Behavior
+    // Display
     // ═══════════════════════════════════════
 
     NLabel {
-        label: "Behavior"
+        label: "Display"
     }
 
     NToggle {
         Layout.fillWidth: true
-        label: "Allow custom input"
-        description: "Let users type and submit text that isn't in the item list"
-        checked: root.editAllowCustom
-        onToggled: function(v) { root.editAllowCustom = v }
-    }
-
-    NTextInput {
-        Layout.fillWidth: true
-        label: "Custom input prefix"
-        description: "Prefix added to custom input values (e.g., 'custom:' → 'custom:mytext')"
-        placeholderText: ""
-        text: root.editCustomInputPrefix
-        onTextChanged: root.editCustomInputPrefix = text
-        visible: root.editAllowCustom
+        label: "Show match count"
+        description: "Show filtered/total count in footer while searching"
+        checked: root.editShowMatchCount
+        onToggled: function(v) { root.editShowMatchCount = v }
     }
 
     NToggle {
         Layout.fillWidth: true
-        label: "Close panel on select"
-        description: "Automatically close the panel when an item is selected"
-        checked: root.editCloseOnSelect
-        onToggled: function(v) { root.editCloseOnSelect = v }
+        label: "Show footer"
+        description: "Show the result count bar below the list"
+        checked: root.editShowFooter
+        onToggled: function(v) { root.editShowFooter = v }
     }
 
     NToggle {
         Layout.fillWidth: true
         label: "Show toast on select"
-        description: "Display a notification when an item is selected"
+        description: "Brief notification when an item is selected"
         checked: root.editShowToast
         onToggled: function(v) { root.editShowToast = v }
     }
@@ -160,21 +157,10 @@ ColumnLayout {
     NTextInput {
         Layout.fillWidth: true
         label: "Result file path"
-        description: "Where selections are written. Scripts read this file after the panel closes."
+        description: "Where selections are written for scripts to read"
         placeholderText: "/tmp/noctalia-dmenu-result"
         text: root.editResultFile
         onTextChanged: root.editResultFile = text
-    }
-
-    NTextInput {
-        Layout.fillWidth: true
-        label: "Default separator"
-        description: "Separator for showSimple mode (\\n for newline, | for pipe, etc.)"
-        placeholderText: "\\n"
-        text: root.editSeparator === "\n" ? "\\n" : root.editSeparator
-        onTextChanged: {
-            root.editSeparator = (text === "\\n") ? "\n" : text;
-        }
     }
 
     ColumnLayout {
@@ -182,8 +168,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: "Max results"
-            description: "Maximum number of items to display: " + root.editMaxResults
+            label: "Max results: " + root.editMaxResults
+            description: "Cap on displayed items"
         }
 
         NSlider {
@@ -204,11 +190,7 @@ ColumnLayout {
         }
 
         pluginApi.pluginSettings.resultFile = root.editResultFile;
-        pluginApi.pluginSettings.defaultSeparator = root.editSeparator;
-        pluginApi.pluginSettings.allowCustomInput = root.editAllowCustom;
         pluginApi.pluginSettings.showToastOnSelect = root.editShowToast;
-        pluginApi.pluginSettings.closeOnSelect = root.editCloseOnSelect;
-        pluginApi.pluginSettings.customInputPrefix = root.editCustomInputPrefix;
         pluginApi.pluginSettings.maxResults = root.editMaxResults;
         pluginApi.pluginSettings.panelPosition = root.editPanelPosition;
         pluginApi.pluginSettings.showMatchCount = root.editShowMatchCount;

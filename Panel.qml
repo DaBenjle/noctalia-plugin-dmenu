@@ -44,7 +44,7 @@ FocusScope {
 
     // Expose anchor properties that PluginPanelSlot passes to SmartPanel
     readonly property bool panelAnchorHorizontalCenter: panelPosition === "center" || panelPosition.endsWith("_center")
-    readonly property bool panelAnchorVerticalCenter: panelPosition === "center"
+    readonly property bool panelAnchorVerticalCenter: panelPosition === "center" || panelPosition.startsWith("center_")
     readonly property bool panelAnchorTop: panelPosition.startsWith("top_")
     readonly property bool panelAnchorBottom: panelPosition.startsWith("bottom_")
     readonly property bool panelAnchorLeft: panelPosition !== "center" && panelPosition.endsWith("_left")
@@ -251,6 +251,20 @@ FocusScope {
                         });
                     }
                 }
+            }
+
+            // ── Custom input hint ──
+            NText {
+                visible: {
+                    var st = root.dmenuState;
+                    return st && st.allowCustomInput && root.filterText === "";
+                }
+                Layout.fillWidth: true
+                Layout.leftMargin: Style.marginL
+                Layout.rightMargin: Style.marginL
+                text: "✎  Custom input allowed — type anything and press Enter"
+                pointSize: Style.fontSizeXS
+                color: Color.mPrimary
             }
 
             // ── Results area ──
