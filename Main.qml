@@ -210,6 +210,10 @@ Item {
     }
 
     function normalizeItems(arr) {
+        if (!Array.isArray(arr)) {
+            Logger.w("DmenuProvider", "normalizeItems received non-array, wrapping");
+            arr = [arr];
+        }
         return arr.map(function(item, idx) {
             if (typeof item === "string") {
                 return { name: item, value: item, index: idx };
@@ -312,41 +316,15 @@ Item {
         handleSelection(prefix + text, -1, "");
     }
 
-    // ── Internal: build session from parsed config ──
-    function _doShow(config) {
-        if (!pluginApi) {
-            Logger.e("DmenuProvider", "pluginApi not available");
-            return;
-        }
-        config.items = root.parseItems(config.items || [], null);
-        var merged = root.buildConfig(config);
-        root.beginSession(merged);
-        root.openPanelSmart();
-        Logger.i("DmenuProvider", "Session " + root.state.sessionId
-            + " started with " + merged.items.length + " items");
-    }
-
     // ── IPC Handlers ──
     IpcHandler {
         target: "plugin:dmenu"
 
-        // ── showItems(itemsList, options) ──
-        // Items as a delimiter-separated string. Options is JSON (or "").
-        //
-        // Options:
-        //   separator    — delimiter (default: "\n")
-        //   prompt       — placeholder text in search bar
-        //   callbackCmd  — command to run on selection ({} = value)
-        //   resultFile   — override result file path
-        //   resultFormat — "plain" (default), "json", or "index"
-        //   allowCustomInput — true/false
-        //   closeOnSelect    — true/false
-        //   maxResults       — number
-        //
-        // Examples:
-        //   showItems "a|b|c" '{"separator":"|","prompt":"Pick:"}'
-        //   showItems "one\ntwo\nthree" ""
-        function showItems(itemsList: string, options: string) {
+        // ── showItems(items, options) ──
+        // For plain text item lists.
+        //   items:   delimiter-separated string
+        //   options: JSON object (or "") with separator, prompt, callbackCmd, etc.
+        function showItems(items: string, options: string) {
             if (!pluginApi) return;
             var opts = {};
             if (options && options !== "") {
@@ -357,8 +335,7 @@ Item {
                 }
             }
             var sep = opts.separator || "\n";
-            var parsed = root.parseItems(itemsList, sep);
-            opts.items = parsed;
+            opts.items = root.parseItems(items, sep);
             var merged = root.buildConfig(opts);
             root.beginSession(merged);
             root.openPanelSmart();
@@ -366,40 +343,36 @@ Item {
                 + " started with " + merged.items.length + " items");
         }
 
-        // ── showJson(itemsArray, options) ──
-        // Items as a JSON array (strings, objects, or mixed). Options is JSON (or "").
+        // ── showJson(config) ──
+        // For structured items with descriptions, icons, images.
+        // Single JSON object containing items array + all options.
         //
-        // Item objects:
-        //   name        — display text (required for objects)
-        //   value       — return value (defaults to name)
-        //   description — subtitle text
-        //   icon        — Tabler icon name (e.g. "browser", "star")
-        //   image       — path to an image file (overrides icon)
+        // {
+        //   "items": ["a", "b"] or [{"name":"a","value":"x","icon":"star"}, ...],
+        //   "prompt": "Pick:",
+        //   "callbackCmd": "echo {}",
+        //   "resultFormat": "plain",
+        //   ...any other option
+        // }
         //
-        // Options: same as showItems (except no separator).
-        //
-        // Examples:
-        //   showJson '["a","b","c"]' '{"prompt":"Pick:"}'
-        //   showJson '[{"name":"Firefox","value":"firefox","icon":"browser"}]' '{}'
-        //   showJson '[{"name":"Photo","image":"/tmp/photo.png"}]' ""
-        function showJson(itemsArray: string, options: string) {
+        // This avoids Quickshell's CLI bug where [...] at the top level
+        // gets split by the argument parser. The outer {…} is safe.
+        function showJson(config: string) {
             if (!pluginApi) return;
-            var items, opts = {};
-            try { items = JSON.parse(itemsArray); }
+            var cfg;
+            try { cfg = JSON.parse(config); }
             catch (e) {
-                Logger.e("DmenuProvider", "Invalid items JSON:", e);
+                Logger.e("DmenuProvider", "Invalid JSON config:", e);
                 return;
             }
-            if (options && options !== "") {
-                try { opts = JSON.parse(options); }
-                catch (e) {
-                    Logger.e("DmenuProvider", "Invalid options JSON:", e);
-                    return;
-                }
+            if (!cfg.items) {
+                Logger.e("DmenuProvider", "showJson: missing 'items' key");
+                return;
             }
-            Logger.d("DmenuProvider", "Parsed items:", JSON.stringify(items));
-            opts.items = root.normalizeItems(items);
-            var merged = root.buildConfig(opts);
+            cfg.items = root.normalizeItems(
+                Array.isArray(cfg.items) ? cfg.items : [cfg.items]
+            );
+            var merged = root.buildConfig(cfg);
             root.beginSession(merged);
             root.openPanelSmart();
             Logger.i("DmenuProvider", "Session " + root.state.sessionId
@@ -407,8 +380,11 @@ Item {
         }
 
         // ── showFromFile(filePath, options) ──
-        // Read items from a file (one per line or with custom separator).
-        // Options is JSON (or ""). Supports separator in options.
+        // Read items from a file. Auto-detects format:
+        //   - JSON array if file starts with '['
+        //   - JSON config object with "items" key if file starts with '{'
+        //   - Delimiter-separated text otherwise
+        // options is JSON (or "").
         function showFromFile(filePath: string, options: string) {
             if (!pluginApi) return;
             var opts = {};
@@ -460,8 +436,37 @@ Item {
 
         onLoaded: {
             var content = text();
-            var parsed = root.parseItems(content, fileLoader.separator);
             var opts = fileLoader.options || {};
+            var parsed;
+            var trimmed = content.replace(/^\s+/, "");
+
+            if (trimmed.charAt(0) === "[") {
+                // JSON array file
+                try {
+                    parsed = root.normalizeItems(JSON.parse(content));
+                } catch (e) {
+                    Logger.e("DmenuProvider", "Invalid JSON file:", e);
+                    return;
+                }
+            } else if (trimmed.charAt(0) === "{") {
+                // JSON config object with items key
+                try {
+                    var config = JSON.parse(content);
+                    parsed = root.normalizeItems(config.items || []);
+                    // Merge file-level config into opts (file config wins for prompt etc.)
+                    for (var key in config) {
+                        if (key !== "items" && opts[key] === undefined)
+                            opts[key] = config[key];
+                    }
+                } catch (e) {
+                    Logger.e("DmenuProvider", "Invalid JSON config file:", e);
+                    return;
+                }
+            } else {
+                // Delimiter-separated text
+                parsed = root.parseItems(content, fileLoader.separator);
+            }
+
             opts.items = parsed;
             var merged = root.buildConfig(opts);
             root.beginSession(merged);
