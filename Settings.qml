@@ -41,16 +41,16 @@ ColumnLayout {
 
     // Position options
     readonly property var positionOptions: [
-        { value: "follow_launcher", label: "Follow launcher" },
-        { value: "center",         label: "Center" },
-        { value: "top_center",     label: "Top center" },
-        { value: "bottom_center",  label: "Bottom center" },
-        { value: "top_left",       label: "Top left" },
-        { value: "top_right",      label: "Top right" },
-        { value: "bottom_left",    label: "Bottom left" },
-        { value: "bottom_right",   label: "Bottom right" },
-        { value: "center_left",    label: "Center left" },
-        { value: "center_right",   label: "Center right" }
+        { key: "follow_launcher", name: "Follow launcher" },
+        { key: "center",          name: "Center" },
+        { key: "top_center",      name: "Top center" },
+        { key: "bottom_center",   name: "Bottom center" },
+        { key: "top_left",        name: "Top left" },
+        { key: "top_right",       name: "Top right" },
+        { key: "bottom_left",     name: "Bottom left" },
+        { key: "bottom_right",    name: "Bottom right" },
+        { key: "center_left",     name: "Center left" },
+        { key: "center_right",    name: "Center right" }
     ]
 
     spacing: Style.marginM
@@ -59,46 +59,14 @@ ColumnLayout {
     // Panel position
     // ═══════════════════════════════════════
 
-    NLabel {
+    NComboBox {
         label: "Panel position"
         description: "Where the dmenu panel appears on screen"
-    }
-
-    Flow {
         Layout.fillWidth: true
-        spacing: Style.marginS
-
-        Repeater {
-            model: root.positionOptions
-
-            Rectangle {
-                width: chipText.implicitWidth + Style.marginL * 2
-                height: 32
-                radius: 16
-                color: root.editPanelPosition === modelData.value
-                    ? Color.mPrimary
-                    : Color.mSurfaceVariant
-                border.width: 1
-                border.color: root.editPanelPosition === modelData.value
-                    ? Color.mPrimary
-                    : Color.mOutline
-
-                Text {
-                    id: chipText
-                    anchors.centerIn: parent
-                    text: modelData.label
-                    font.pointSize: Style.fontSizeS
-                    color: root.editPanelPosition === modelData.value
-                        ? Color.mOnPrimary
-                        : Color.mOnSurfaceVariant
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.editPanelPosition = modelData.value
-                }
-            }
+        model: root.positionOptions
+        currentKey: root.editPanelPosition
+        onSelected: function(key) {
+            root.editPanelPosition = key;
         }
     }
 
