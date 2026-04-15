@@ -414,8 +414,6 @@ FocusScope {
                             return root.pluginApi?.trp(
                                 "provider.filteredResultsCount",
                                 root.filteredItems.length,
-                                "{filtered} of {total} · {count} result",
-                                "{filtered} of {total} · {count} results",
                                 {
                                     filtered: root.filteredItems.length,
                                     total: root.dmenuState ? root.dmenuState.items.length : 0
@@ -424,9 +422,7 @@ FocusScope {
                         }
                         return root.pluginApi?.trp(
                             "provider.resultsCount",
-                            root.filteredItems.length,
-                            "{count} result",
-                            "{count} results"
+                            root.filteredItems.length
                         );
                     }
                     pointSize: Style.fontSizeXS
