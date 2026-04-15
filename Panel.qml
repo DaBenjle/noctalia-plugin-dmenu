@@ -238,7 +238,7 @@ FocusScope {
                 fontSize: Style.fontSizeM
                 placeholderText: {
                     var st = root.dmenuState;
-                    return (st && st.prompt) ? st.prompt : "Type to filter...";
+                    return (st && st.prompt) ? st.prompt : root.pluginApi?.tr("provider.typeToFilterPlaceholder");
                 }
                 text: root.filterText
                 onTextChanged: root.filterText = text
@@ -388,9 +388,9 @@ FocusScope {
                     visible: root.filteredItems.length === 0
                     text: {
                         var st = root.dmenuState;
-                        if (!st || !st.active) return "Loading...";
-                        if (root.filterText !== "") return "No matches";
-                        return "No items";
+                        if (!st || !st.active) return root.pluginApi?.tr("provider.loading");
+                        if (root.filterText !== "") return root.pluginApi?.tr("provider.noMatches");
+                        return root.pluginApi?.tr("provider.noItems");
                     }
                     pointSize: Style.fontSizeM
                     color: Color.mOnSurfaceVariant
@@ -407,7 +407,7 @@ FocusScope {
                     Layout.fillWidth: true
                     text: {
                         if (root.filteredItems.length === 0) {
-                            if (root.filterText) return "No results";
+                            if (root.filterText) return root.pluginApi?.tr("provider.noResults");
                             return "";
                         }
                         var prefix = "";

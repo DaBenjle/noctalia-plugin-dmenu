@@ -136,7 +136,7 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: root.pluginApi?.tr("settings.maxResults") + ": " + root.editMaxResults
+            label: root.pluginApi?.tr("settings.maxResultsLabel", { count: root.editMaxResults })
             description: root.pluginApi?.tr("settings.maxResultsDesc", { count: root.editMaxResults })
         }
 

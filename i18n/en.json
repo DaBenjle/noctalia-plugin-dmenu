@@ -2,8 +2,13 @@
   "provider": {
     "name": "Dmenu",
     "command": "External menu (dmenu mode)",
+    "loading": "Loading...",
+    "noMatches": "No matches",
+    "noItems": "No items",
     "noSession": "No active dmenu session",
     "noSessionDesc": "Use IPC or noctalia-dmenu script to send items",
+    "noResults": "No results",
+    "typeToFilterPlaceholder": "Type to filter...",
     "customInput": "Use as custom input",
     "customInputHint": "✎  Custom input allowed — type anything and press Enter",
     "selected": "Selected: {value}"
@@ -40,6 +45,7 @@
     "showToast": "Show toast on select",
     "showToastDesc": "Display a notification when an item is selected",
     "maxResults": "Max results",
+    "maxResultsLabel": "Max results: {count}",
     "maxResultsDesc": "Maximum number of items to display: {count}"
   }
 }
