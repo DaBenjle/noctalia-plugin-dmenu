@@ -152,8 +152,8 @@ Item {
             || manifest.resultFile
             || "/tmp/noctalia-dmenu-result";
         cfg.resultFormat = overrides.resultFormat || "plain";
-        cfg.allowCustomInput = overrides.allowCustomInput === true ? true : false;
-        cfg.closeOnSelect = overrides.closeOnSelect === false ? false : true;
+        cfg.allowCustomInput = overrides.allowCustomInput;
+        cfg.closeOnSelect = overrides.closeOnSelect;
         cfg.maxResults = overrides.maxResults
             || defaults.maxResults
             || manifest.maxResults
@@ -231,8 +231,7 @@ Item {
         var resultStr = formatResult(value, index);
         var resultFile = state.resultFile;
         var callbackCmd = state.callbackCmd;
-        var showToast = pluginApi
-            ? (pluginApi.pluginSettings.showToastOnSelect || false) : false;
+        var showToast = pluginApi?.pluginSettings?.showToastOnSelect ?? false;
         var shouldClose = state.closeOnSelect;
 
         // Capture item name BEFORE endSession clears items
