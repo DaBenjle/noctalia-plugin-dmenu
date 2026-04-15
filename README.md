@@ -6,27 +6,6 @@ A dmenu replacement plugin for [Noctalia Shell](https://github.com/noctalia-dev/
 
 Everything is driven by Noctalia's IPC system. A script calls `showItems` or `showJson` to open the panel with a list of choices. When the user selects one, the plugin writes the result to a file and optionally runs a callback command. The included `noctalia-dmenu` helper script wraps this into a familiar pipe interface — under the hood it sends the IPC call, waits for the result file, and prints the selection to stdout.
 
-## Install
-
-```bash
-cd ~/.config/noctalia/plugins/
-git clone https://github.com/DaBenjle/noctalia-plugin-dmenu dmenu
-```
-
-Add to `~/.config/noctalia/plugins.json`:
-
-```json
-{ "states": { "dmenu": { "enabled": true } } }
-```
-
-Restart Noctalia, enable in Settings → Plugins.
-
-For pipe-style usage:
-
-```bash
-ln -s ~/.config/noctalia/plugins/dmenu/noctalia-dmenu ~/.local/bin/noctalia-dmenu
-```
-
 ## API
 
 All commands go through `noctalia-shell ipc call plugin:dmenu <method> [args]`.
@@ -74,36 +53,36 @@ noctalia-shell ipc call plugin:dmenu showFromFile /tmp/items.txt '{"separator":"
 
 ### Item fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Display text |
-| `value` | string | Return value (defaults to `name`) |
-| `description` | string | Subtitle |
-| `icon` | string | [Tabler icon](https://tabler.io/icons) name |
-| `image` | string | Absolute path to image (overrides `icon`) |
+| Field         | Type   | Description                                 |
+| ------------- | ------ | ------------------------------------------- |
+| `name`        | string | Display text                                |
+| `value`       | string | Return value (defaults to `name`)           |
+| `description` | string | Subtitle                                    |
+| `icon`        | string | [Tabler icon](https://tabler.io/icons) name |
+| `image`       | string | Absolute path to image (overrides `icon`)   |
 
 ### Options
 
 For `showItems` / `showFromFile`, pass as second arg. For `showJson`, include in the same object.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `separator` | string | `"\n"` | Item delimiter (`showItems` / `showFromFile` text mode) |
-| `prompt` | string | `""` | Search bar placeholder |
-| `callbackCmd` | string | `""` | Run on selection. `{}` = value, `{index}` = index, `{name}` = name |
-| `resultFile` | string | `/tmp/noctalia-dmenu-result` | Where to write the result |
-| `resultFormat` | string | `"plain"` | `"plain"`, `"json"`, or `"index"` |
-| `allowCustomInput` | bool | `false` | Allow typing values not in the list |
-| `closeOnSelect` | bool | `true` | Close after selection |
-| `maxResults` | int | `200` | Max displayed items |
+| Field              | Type   | Default                      | Description                                                        |
+| ------------------ | ------ | ---------------------------- | ------------------------------------------------------------------ |
+| `separator`        | string | `"\n"`                       | Item delimiter (`showItems` / `showFromFile` text mode)            |
+| `prompt`           | string | `""`                         | Search bar placeholder                                             |
+| `callbackCmd`      | string | `""`                         | Run on selection. `{}` = value, `{index}` = index, `{name}` = name |
+| `resultFile`       | string | `/tmp/noctalia-dmenu-result` | Where to write the result                                          |
+| `resultFormat`     | string | `"plain"`                    | `"plain"`, `"json"`, or `"index"`                                  |
+| `allowCustomInput` | bool   | `false`                      | Allow typing values not in the list                                |
+| `closeOnSelect`    | bool   | `true`                       | Close after selection                                              |
+| `maxResults`       | int    | `200`                        | Max displayed items                                                |
 
 ### Other commands
 
-| Command | Description |
-|---------|-------------|
+| Command  | Description              |
+| -------- | ------------------------ |
 | `toggle` | Toggle panel open/closed |
-| `close` | Cancel and close |
-| `clear` | Reset state |
+| `close`  | Cancel and close         |
+| `clear`  | Reset state              |
 
 ## Helper script
 
@@ -121,17 +100,17 @@ noctalia-dmenu -f /tmp/items.txt -p "Select:"
 echo -e "Firefox\nChromium" | noctalia-dmenu -cb "gtk-launch {}"
 ```
 
-| Flag | Description |
-|------|-------------|
-| `-p`, `--prompt` | Search bar placeholder |
-| `-cb`, `--callback` | Command on selection |
-| `-c`, `--custom` | Allow custom input |
-| `-s`, `--separator` | Delimiter (default: newline) |
-| `-t`, `--timeout` | Wait timeout (default: 30s) |
-| `-r`, `--result-file` | Override result path |
-| `-f`, `--file` | Read from file |
-| `-F`, `--format` | Output: plain, json, index |
-| `-no-close` | Keep panel open |
+| Flag                  | Description                  |
+| --------------------- | ---------------------------- |
+| `-p`, `--prompt`      | Search bar placeholder       |
+| `-cb`, `--callback`   | Command on selection         |
+| `-c`, `--custom`      | Allow custom input           |
+| `-s`, `--separator`   | Delimiter (default: newline) |
+| `-t`, `--timeout`     | Wait timeout (default: 30s)  |
+| `-r`, `--result-file` | Override result path         |
+| `-f`, `--file`        | Read from file               |
+| `-F`, `--format`      | Output: plain, json, index   |
+| `-no-close`           | Keep panel open              |
 
 Exit: `0` selected, `1` timeout/cancelled, `2` error.
 
@@ -157,14 +136,14 @@ esac
 
 Settings → Plugins → Dmenu Provider → Configure.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Panel position | Follow launcher | Where the panel appears |
-| Show match count | On | Filtered/total in footer |
-| Show footer | On | Result count bar |
-| Show toast | Off | Notification on selection |
-| Result file | `/tmp/noctalia-dmenu-result` | Default path |
-| Max results | 200 | Display cap |
+| Setting          | Default                      | Description               |
+| ---------------- | ---------------------------- | ------------------------- |
+| Panel position   | Follow launcher              | Where the panel appears   |
+| Show match count | On                           | Filtered/total in footer  |
+| Show footer      | On                           | Result count bar          |
+| Show toast       | Off                          | Notification on selection |
+| Result file      | `/tmp/noctalia-dmenu-result` | Default path              |
+| Max results      | 200                          | Display cap               |
 
 ## Testing
 
