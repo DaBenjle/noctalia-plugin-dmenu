@@ -410,10 +410,24 @@ FocusScope {
                             if (root.filterText) return root.pluginApi?.tr("provider.noResults");
                             return "";
                         }
-                        var prefix = "";
-                        if (root.filterText && root.showMatchCount)
-                            prefix = root.filteredItems.length + " of " + (root.dmenuState ? root.dmenuState.items.length : 0) + " · ";
-                        return prefix + root.filteredItems.length + " result" + (root.filteredItems.length !== 1 ? "s" : "");
+                        if (root.filterText && root.showMatchCount) {
+                            return root.pluginApi?.trp(
+                                "provider.filteredResultsCount",
+                                root.filteredItems.length,
+                                "{filtered} of {total} · {count} result",
+                                "{filtered} of {total} · {count} results",
+                                {
+                                    filtered: root.filteredItems.length,
+                                    total: root.dmenuState ? root.dmenuState.items.length : 0
+                                }
+                            );
+                        }
+                        return root.pluginApi?.trp(
+                            "provider.resultsCount",
+                            root.filteredItems.length,
+                            "{count} result",
+                            "{count} results"
+                        );
                     }
                     pointSize: Style.fontSizeXS
                     color: Color.mOnSurfaceVariant
